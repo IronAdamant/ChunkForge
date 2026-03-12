@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chunkforge"
+version = "0.1.0"
+description = "Purely local, persistent KV-cache rollback and offload engine with dynamic semantic chunking and hybrid vector-database-style indexing"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "ChunkForge Contributors"}
+]
+keywords = ["llm", "kv-cache", "chunking", "indexing", "offline", "local"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "msgspec>=0.18.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+chunkforge = "chunkforge.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/chunkforge/chunkforge"
+Repository = "https://github.com/chunkforge/chunkforge"
+Documentation = "https://github.com/chunkforge/chunkforge#readme"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chunkforge*"]
+
+[tool.setuptools.package-data]
+chunkforge = ["py.typed"]
