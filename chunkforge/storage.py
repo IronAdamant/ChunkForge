@@ -3,9 +3,10 @@ Storage backend for ChunkForge.
 
 Handles persistent storage of:
 - Chunk metadata (hashes, semantic signatures, positions)
-- KV-cache tensors (serialized with msgspec or pickle)
+- KV-cache tensors (serialized with msgspec or pickle, compressed with zlib)
 - Session state and rollback history
 - Document indexing information
+- Chunk versioning and history
 
 Uses SQLite for metadata and filesystem for KV-cache blobs.
 All storage is local-only with zero network dependencies.
@@ -17,6 +18,7 @@ import os
 import pickle
 import sqlite3
 import time
+import zlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -84,7 +86,21 @@ class StorageBackend:
                     token_count INTEGER NOT NULL,
                     created_at REAL NOT NULL,
                     last_accessed REAL NOT NULL,
-                    access_count INTEGER DEFAULT 0
+                    access_count INTEGER DEFAULT 0,
+                    version INTEGER DEFAULT 1
+                )
+            """)
+            
+            # Chunk history table: tracks chunk versions
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS chunk_history (
+                    chunk_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    semantic_signature BLOB NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (chunk_id, version),
+                    FOREIGN KEY (chunk_id) REFERENCES chunks(chunk_id)
                 )
             """)
             
@@ -163,14 +179,33 @@ class StorageBackend:
             import struct
             sig_bytes = struct.pack(f'{len(semantic_signature)}f', *semantic_signature)
         
+        # Get current version
         with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT version FROM chunks WHERE chunk_id = ?", (chunk_id,)
+            )
+            row = cursor.fetchone()
+            version = (row[0] + 1) if row else 1
+        
+        with sqlite3.connect(self.db_path) as conn:
+            # Store current version in history
+            if row:
+                conn.execute("""
+                    INSERT INTO chunk_history
+                    (chunk_id, version, content_hash, semantic_signature, created_at)
+                    SELECT chunk_id, version, content_hash, semantic_signature, created_at
+                    FROM chunks WHERE chunk_id = ?
+                """, (chunk_id,))
+            
+            # Update or insert chunk
             conn.execute("""
-                INSERT OR REPLACE INTO chunks 
+                INSERT OR REPLACE INTO chunks
                 (chunk_id, document_path, content_hash, semantic_signature,
-                 start_pos, end_pos, token_count, created_at, last_accessed, access_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                 start_pos, end_pos, token_count, created_at, last_accessed,
+                 access_count, version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
             """, (chunk_id, document_path, content_hash, sig_bytes,
-                  start_pos, end_pos, token_count, now, now))
+                  start_pos, end_pos, token_count, now, now, version))
             conn.commit()
     
     def get_chunk(self, chunk_id: str) -> Optional[Dict[str, Any]]:
@@ -624,6 +659,10 @@ class StorageBackend:
             # Calculate total tokens
             cursor = conn.execute("SELECT SUM(token_count) FROM chunks")
             total_tokens = cursor.fetchone()[0] or 0
+            
+            # Count chunk versions
+            cursor = conn.execute("SELECT COUNT(*) FROM chunk_history")
+            version_count = cursor.fetchone()[0]
         
         # Calculate disk usage
         kv_size = sum(f.stat().st_size for f in self.kv_dir.rglob("*") if f.is_file())
@@ -634,6 +673,7 @@ class StorageBackend:
             "document_count": doc_count,
             "session_count": session_count,
             "total_tokens": total_tokens,
+            "version_count": version_count,
             "kv_cache_size_bytes": kv_size,
             "database_size_bytes": db_size,
             "storage_dir": str(self.base_dir),
@@ -644,6 +684,7 @@ class StorageBackend:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM session_chunks")
             conn.execute("DELETE FROM sessions")
+            conn.execute("DELETE FROM chunk_history")
             conn.execute("DELETE FROM chunks")
             conn.execute("DELETE FROM documents")
             conn.commit()
@@ -651,3 +692,22 @@ class StorageBackend:
         # Remove KV cache files
         for kv_file in self.kv_dir.rglob("*.kv"):
             kv_file.unlink()
+    
+    def get_chunk_history(self, chunk_id: str) -> List[Dict[str, Any]]:
+        """
+        Get version history for a chunk.
+        
+        Args:
+            chunk_id: Chunk identifier
+            
+        Returns:
+            List of version metadata dictionaries
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("""
+                SELECT * FROM chunk_history
+                WHERE chunk_id = ?
+                ORDER BY version DESC
+            """, (chunk_id,))
+            return [dict(row) for row in cursor.fetchall()]

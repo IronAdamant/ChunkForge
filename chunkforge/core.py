@@ -1063,7 +1063,7 @@ class ChunkForge:
         storage_stats = self.storage.get_storage_stats()
         
         return {
-            "version": "0.3.0",
+            "version": "0.4.0",
             "storage": storage_stats,
             "config": {
                 "chunk_size": self.chunk_size,
