@@ -163,6 +163,135 @@ Examples:
         help="Skip confirmation prompt",
     )
 
+    # annotate command
+    annotate_parser = subparsers.add_parser(
+        "annotate",
+        help="Add an annotation to a document or chunk",
+    )
+    annotate_parser.add_argument(
+        "target",
+        help="Document path or chunk ID",
+    )
+    annotate_parser.add_argument(
+        "--type",
+        required=True,
+        choices=["document", "chunk"],
+        help="Target type",
+    )
+    annotate_parser.add_argument(
+        "--content",
+        required=True,
+        help="Annotation text",
+    )
+    annotate_parser.add_argument(
+        "--tags",
+        nargs="+",
+        help="Optional tags",
+    )
+    annotate_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output as JSON",
+    )
+
+    # get-annotations command
+    get_ann_parser = subparsers.add_parser(
+        "get-annotations",
+        help="Retrieve annotations",
+    )
+    get_ann_parser.add_argument(
+        "--target",
+        help="Filter by document path or chunk ID",
+    )
+    get_ann_parser.add_argument(
+        "--type",
+        choices=["document", "chunk"],
+        help="Filter by target type",
+    )
+    get_ann_parser.add_argument(
+        "--tags",
+        nargs="+",
+        help="Filter by tags",
+    )
+    get_ann_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output as JSON",
+    )
+
+    # delete-annotation command
+    del_ann_parser = subparsers.add_parser(
+        "delete-annotation",
+        help="Delete an annotation by ID",
+    )
+    del_ann_parser.add_argument(
+        "annotation_id",
+        type=int,
+        help="Annotation ID to delete",
+    )
+
+    # update-annotation command
+    upd_ann_parser = subparsers.add_parser(
+        "update-annotation",
+        help="Update an annotation's content and/or tags",
+    )
+    upd_ann_parser.add_argument(
+        "annotation_id",
+        type=int,
+        help="Annotation ID to update",
+    )
+    upd_ann_parser.add_argument(
+        "--content",
+        help="New annotation text",
+    )
+    upd_ann_parser.add_argument(
+        "--tags",
+        nargs="+",
+        help="New tags (replaces existing)",
+    )
+    upd_ann_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output as JSON",
+    )
+
+    # map command
+    map_parser = subparsers.add_parser(
+        "map",
+        help="Show project map: documents, chunks, annotations",
+    )
+    map_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output as JSON",
+    )
+
+    # history command
+    history_parser = subparsers.add_parser(
+        "history",
+        help="Show change history",
+    )
+    history_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Max entries to show (default: 20)",
+    )
+    history_parser.add_argument(
+        "--document",
+        help="Filter by document path",
+    )
+    history_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output as JSON",
+    )
+
     return parser
 
 
@@ -377,6 +506,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     chunkforge = ChunkForge(storage_dir=args.storage_dir)
 
+    from chunkforge.cli_metadata import (
+        cmd_annotate,
+        cmd_get_annotations,
+        cmd_delete_annotation,
+        cmd_update_annotation,
+        cmd_map,
+        cmd_history,
+    )
+
     command_handlers = {
         "serve": cmd_serve,
         "index": cmd_index,
@@ -384,6 +522,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         "detect": cmd_detect,
         "stats": cmd_stats,
         "clear": cmd_clear,
+        "annotate": cmd_annotate,
+        "get-annotations": cmd_get_annotations,
+        "delete-annotation": cmd_delete_annotation,
+        "update-annotation": cmd_update_annotation,
+        "map": cmd_map,
+        "history": cmd_history,
     }
 
     handler = command_handlers.get(args.command)

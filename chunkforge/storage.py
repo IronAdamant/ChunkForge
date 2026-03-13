@@ -424,6 +424,29 @@ class StorageBackend:
         """Retrieve change history entries."""
         return self._metadata_storage.get_change_history(limit, document_path)
 
+    def update_annotation(
+        self,
+        annotation_id: int,
+        content: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> bool:
+        """Update an annotation's content and/or tags."""
+        return self._metadata_storage.update_annotation(annotation_id, content, tags)
+
+    def search_annotations(
+        self, query: str, target_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Search annotations by content text."""
+        return self._metadata_storage.search_annotations(query, target_type)
+
+    def prune_history(
+        self,
+        max_age_seconds: Optional[float] = None,
+        max_entries: Optional[int] = None,
+    ) -> int:
+        """Prune change history entries."""
+        return self._metadata_storage.prune_history(max_age_seconds, max_entries)
+
     def get_all_documents(self) -> List[Dict[str, Any]]:
         """Get all indexed documents."""
         with sqlite3.connect(self.db_path) as conn:

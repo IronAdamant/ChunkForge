@@ -1,4 +1,6 @@
-"""Tests for ChunkForge metadata tools: annotate, map, and history."""
+"""Tests for ChunkForge metadata tools: annotate, map, history, and enhancements."""
+
+import time
 
 from chunkforge.engine import ChunkForge
 
@@ -101,6 +103,82 @@ class TestAnnotations:
         # Deleting again returns False
         delete_result2 = engine.delete_annotation(ann_id)
         assert delete_result2["deleted"] is False
+
+
+    def test_update_annotation_content(self, tmp_path):
+        """Test updating annotation content."""
+        engine = self._make_engine(tmp_path)
+        path = self._index_file(tmp_path, engine)
+
+        result = engine.annotate(path, "document", "Original note")
+        ann_id = result["id"]
+
+        update_result = engine.update_annotation(ann_id, content="Updated note")
+        assert update_result["updated"] is True
+
+        annotations = engine.get_annotations(target=path)
+        assert annotations[0]["content"] == "Updated note"
+
+    def test_update_annotation_tags(self, tmp_path):
+        """Test updating annotation tags only."""
+        engine = self._make_engine(tmp_path)
+        path = self._index_file(tmp_path, engine)
+
+        result = engine.annotate(path, "document", "Note", tags=["old"])
+        ann_id = result["id"]
+
+        engine.update_annotation(ann_id, tags=["new", "updated"])
+
+        annotations = engine.get_annotations(target=path)
+        assert annotations[0]["tags"] == ["new", "updated"]
+        assert annotations[0]["content"] == "Note"  # content unchanged
+
+    def test_update_nonexistent_annotation(self, tmp_path):
+        """Test updating a nonexistent annotation."""
+        engine = self._make_engine(tmp_path)
+        result = engine.update_annotation(99999, content="nope")
+        assert result["updated"] is False
+
+    def test_search_annotations(self, tmp_path):
+        """Test searching annotation content text."""
+        engine = self._make_engine(tmp_path)
+        path = self._index_file(tmp_path, engine)
+
+        engine.annotate(path, "document", "Handles user authentication")
+        engine.annotate(path, "document", "Database connection pool")
+
+        results = engine.search_annotations("authentication")
+        assert len(results) == 1
+        assert "authentication" in results[0]["content"]
+
+        results_all = engine.search_annotations("a")
+        assert len(results_all) == 2
+
+    def test_bulk_annotate(self, tmp_path):
+        """Test annotating multiple targets at once."""
+        engine = self._make_engine(tmp_path)
+        path1 = self._index_file(tmp_path, engine, "a.py", "def a(): pass")
+        path2 = self._index_file(tmp_path, engine, "b.py", "def b(): pass")
+
+        result = engine.bulk_annotate([
+            {"target": path1, "target_type": "document", "content": "Module A"},
+            {"target": path2, "target_type": "document", "content": "Module B", "tags": ["core"]},
+        ])
+        assert len(result["created"]) == 2
+        assert len(result["errors"]) == 0
+
+    def test_bulk_annotate_with_errors(self, tmp_path):
+        """Test bulk annotate with mix of valid and invalid targets."""
+        engine = self._make_engine(tmp_path)
+        path = self._index_file(tmp_path, engine)
+
+        result = engine.bulk_annotate([
+            {"target": path, "target_type": "document", "content": "Valid"},
+            {"target": "/no/such/file", "target_type": "document", "content": "Invalid"},
+        ])
+        assert len(result["created"]) == 1
+        assert len(result["errors"]) == 1
+        assert "error" in result["errors"][0]
 
 
 class TestMap:
@@ -234,3 +312,52 @@ class TestHistory:
 
         history = engine.get_history(limit=3)
         assert len(history) == 3
+
+    def test_prune_history_by_max_entries(self, tmp_path):
+        """Test pruning history to max entries."""
+        engine = self._make_engine(tmp_path)
+
+        f = tmp_path / "test.py"
+        f.write_text("def hello(): pass")
+        engine.index_documents([str(f)])
+
+        for i in range(5):
+            engine.detect_changes_and_update(f"session{i}", [str(f)])
+
+        result = engine.prune_history(max_entries=2)
+        assert result["pruned"] == 3
+
+        history = engine.get_history()
+        assert len(history) == 2
+
+    def test_prune_history_by_age(self, tmp_path):
+        """Test pruning history by age."""
+        engine = self._make_engine(tmp_path)
+
+        # Directly insert an old entry via storage
+        engine.storage._metadata_storage.record_change(
+            summary={"unchanged": [], "modified": [], "new": [], "removed": []},
+            session_id="old",
+        )
+        # Backdate the entry
+        import sqlite3
+
+        with sqlite3.connect(engine.storage.db_path) as conn:
+            conn.execute(
+                "UPDATE change_history SET timestamp = ? WHERE session_id = 'old'",
+                (time.time() - 86400 * 30,),  # 30 days ago
+            )
+            conn.commit()
+
+        # Add a fresh entry
+        f = tmp_path / "test.py"
+        f.write_text("def hello(): pass")
+        engine.index_documents([str(f)])
+        engine.detect_changes_and_update("new_session", [str(f)])
+
+        result = engine.prune_history(max_age_seconds=86400)  # 1 day
+        assert result["pruned"] == 1
+
+        history = engine.get_history()
+        assert len(history) == 1
+        assert history[0]["session_id"] == "new_session"

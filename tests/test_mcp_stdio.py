@@ -164,3 +164,56 @@ class TestMCPStdioIntegration:
 
         history = engine.get_history()
         assert history[0]["reason"] == "Post-refactor check"
+
+    def test_update_annotation_tool_logic(self, tmp_path):
+        """Test update_annotation tool execution logic."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+        ann = engine.annotate(str(test_file), "document", "Old text")
+
+        result = engine.update_annotation(ann["id"], content="New text")
+        assert result["updated"] is True
+
+    def test_search_annotations_tool_logic(self, tmp_path):
+        """Test search_annotations tool execution logic."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+        engine.annotate(str(test_file), "document", "Auth handler")
+
+        result = engine.search_annotations("Auth")
+        assert len(result) == 1
+
+    def test_bulk_annotate_tool_logic(self, tmp_path):
+        """Test bulk_annotate tool execution logic."""
+        f1 = tmp_path / "a.py"
+        f1.write_text("def a(): pass")
+        f2 = tmp_path / "b.py"
+        f2.write_text("def b(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(f1), str(f2)])
+
+        result = engine.bulk_annotate([
+            {"target": str(f1), "target_type": "document", "content": "A"},
+            {"target": str(f2), "target_type": "document", "content": "B"},
+        ])
+        assert len(result["created"]) == 2
+
+    def test_prune_history_tool_logic(self, tmp_path):
+        """Test prune_history tool execution logic."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+        for i in range(3):
+            engine.detect_changes_and_update(f"s{i}", [str(test_file)])
+
+        result = engine.prune_history(max_entries=1)
+        assert result["pruned"] == 2

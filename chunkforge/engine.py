@@ -321,6 +321,51 @@ class ChunkForge:
         deleted = self.storage.delete_annotation(annotation_id)
         return {"deleted": deleted, "id": annotation_id}
 
+    def update_annotation(
+        self,
+        annotation_id: int,
+        content: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Update an annotation by ID."""
+        updated = self.storage.update_annotation(annotation_id, content, tags)
+        return {"updated": updated, "id": annotation_id}
+
+    def search_annotations(
+        self, query: str, target_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Search annotation content text."""
+        return self.storage.search_annotations(query, target_type)
+
+    def bulk_annotate(self, annotations: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Annotate multiple targets in one call.
+
+        Each entry: {target, target_type, content, tags?}
+        """
+        results = []
+        errors = []
+        for entry in annotations:
+            result = self.annotate(
+                target=entry["target"],
+                target_type=entry["target_type"],
+                content=entry["content"],
+                tags=entry.get("tags"),
+            )
+            if "error" in result:
+                errors.append({**entry, "error": result["error"]})
+            else:
+                results.append(result)
+        return {"created": results, "errors": errors}
+
+    def prune_history(
+        self,
+        max_age_seconds: Optional[float] = None,
+        max_entries: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Prune old history entries."""
+        deleted = self.storage.prune_history(max_age_seconds, max_entries)
+        return {"pruned": deleted}
+
     def get_map(self) -> Dict[str, Any]:
         """Get a project overview: all documents with chunk counts and annotations."""
         documents = self.storage.get_all_documents()

@@ -209,6 +209,95 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
                 },
             ),
             Tool(
+                name="update_annotation",
+                description="Update an existing annotation's content and/or tags",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "annotation_id": {
+                            "type": "integer",
+                            "description": "Annotation ID to update",
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "New annotation text",
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "New tags (replaces existing)",
+                        },
+                    },
+                    "required": ["annotation_id"],
+                },
+            ),
+            Tool(
+                name="search_annotations",
+                description="Search annotation content text (substring match)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Text to search for in annotation content",
+                        },
+                        "target_type": {
+                            "type": "string",
+                            "enum": ["document", "chunk"],
+                            "description": "Filter by target type",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            ),
+            Tool(
+                name="bulk_annotate",
+                description="Annotate multiple targets in one call",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "target": {"type": "string"},
+                                    "target_type": {
+                                        "type": "string",
+                                        "enum": ["document", "chunk"],
+                                    },
+                                    "content": {"type": "string"},
+                                    "tags": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                },
+                                "required": ["target", "target_type", "content"],
+                            },
+                            "description": "List of annotations to create",
+                        },
+                    },
+                    "required": ["annotations"],
+                },
+            ),
+            Tool(
+                name="prune_history",
+                description="Prune old change history entries by age or count",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "max_age_seconds": {
+                            "type": "number",
+                            "description": "Delete entries older than this many seconds",
+                        },
+                        "max_entries": {
+                            "type": "integer",
+                            "description": "Keep only this many newest entries",
+                        },
+                    },
+                },
+            ),
+            Tool(
                 name="map",
                 description="Get project overview: all documents with chunk counts, tokens, and annotations",
                 inputSchema={
@@ -283,6 +372,26 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
             elif name == "delete_annotation":
                 result = engine.delete_annotation(
                     annotation_id=arguments["annotation_id"],
+                )
+            elif name == "update_annotation":
+                result = engine.update_annotation(
+                    annotation_id=arguments["annotation_id"],
+                    content=arguments.get("content"),
+                    tags=arguments.get("tags"),
+                )
+            elif name == "search_annotations":
+                result = engine.search_annotations(
+                    query=arguments["query"],
+                    target_type=arguments.get("target_type"),
+                )
+            elif name == "bulk_annotate":
+                result = engine.bulk_annotate(
+                    annotations=arguments["annotations"],
+                )
+            elif name == "prune_history":
+                result = engine.prune_history(
+                    max_age_seconds=arguments.get("max_age_seconds"),
+                    max_entries=arguments.get("max_entries"),
                 )
             elif name == "map":
                 result = engine.get_map()

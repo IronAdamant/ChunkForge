@@ -7,14 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-03-14
+
 ### Added
-- **Annotation system** — `annotate`, `get_annotations`, `delete_annotation` MCP tools for attaching metadata notes to documents and chunks
-- **Project map** — `map` MCP tool returns all documents with chunk counts, token totals, and annotations
-- **Change history** — `history` MCP tool shows logged detect_changes results with reasons and document filtering
-- **`detect_changes` reason param** — optional `reason` string stored in change history for audit trail
+- **Annotation system** — `annotate`, `get_annotations`, `delete_annotation`, `update_annotation` MCP tools for attaching metadata to documents and chunks
+- **Update annotations** — `update_annotation` MCP tool and CLI command to modify content/tags of existing annotations
+- **Annotation search** — `search_annotations` MCP tool for substring search across annotation content
+- **Bulk annotate** — `bulk_annotate` MCP tool to annotate multiple targets in one call
+- **Project map** — `map` MCP tool and CLI command for project overview with chunk counts, tokens, and annotations
+- **Change history** — `history` MCP tool and CLI command for change detection audit trail
+- **History pruning** — `prune_history` MCP tool to clean up old entries by age or max count
+- **`detect_changes` reason param** — optional `reason` string stored in change history
+- **CLI commands** — `annotate`, `get-annotations`, `delete-annotation`, `update-annotation`, `map`, `history`
 - New `annotations` and `change_history` SQLite tables
 - `MetadataStorage` delegate class following `SessionStorage` pattern
-- 21 new tests (14 in `test_metadata.py`, 7 in `test_mcp_stdio.py`); total: 123
+- `cli_metadata.py` — CLI handler functions for metadata commands
+- 33 new tests; total: 135
 
 ## [0.5.4] - 2026-03-13
 
