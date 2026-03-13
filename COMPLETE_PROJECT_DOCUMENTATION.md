@@ -10,7 +10,8 @@
 | `chunkforge/storage.py` | `StorageBackend` class; SQLite metadata + chunk content persistence, delegates session ops to SessionStorage | session_storage, numpy (optional) | [spec-project](wiki-local/spec-project.md) |
 | `chunkforge/session_storage.py` | `SessionStorage` class; session lifecycle, KV-cache serialization (JSON+zlib), rollback, pruning | msgspec (optional) | [spec-project](wiki-local/spec-project.md) |
 | `chunkforge/session.py` | `SessionManager` class; high-level session operations with HNSW-accelerated retrieval | storage, index, chunkers.base, numpy_compat | [spec-project](wiki-local/spec-project.md) |
-| `chunkforge/index.py` | `HNSWIndex` and `VectorIndex` classes; pure-Python HNSW for O(log n) similarity search | (none) | [spec-project](wiki-local/spec-project.md) |
+| `chunkforge/index.py` | `HNSWIndex` and `VectorIndex` classes; pure-Python HNSW for O(log n) similarity search; `to_dict()`/`from_dict()` for serialization | (none) | [spec-project](wiki-local/spec-project.md) |
+| `chunkforge/index_store.py` | Persistent index serialization; save/load VectorIndex to compressed JSON; staleness detection via chunk ID hash | index | [spec-project](wiki-local/spec-project.md) |
 | `chunkforge/cli.py` | CLI entry point (`chunkforge` command); serve, serve-mcp, index, search, detect, stats, clear | engine, mcp_server, mcp_stdio | [spec-project](wiki-local/spec-project.md) |
 | `chunkforge/mcp_server.py` | `MCPServer` + `MCPRequestHandler`; HTTP/JSON REST server on localhost | engine, chunkers | [spec-project](wiki-local/spec-project.md) |
 | `chunkforge/mcp_stdio.py` | Real MCP server using JSON-RPC over stdio; for Claude Desktop integration | engine, mcp SDK (optional) | [spec-project](wiki-local/spec-project.md) |
@@ -30,6 +31,7 @@
 | `tests/test_session.py` | Tests for SessionManager: get_relevant_chunks, save_state, rollback, prune | chunkforge.session | - |
 | `tests/test_chunkers.py` | Tests for `TextChunker`, `CodeChunker`, `Chunk` dataclass | chunkforge.chunkers | - |
 | `tests/test_index.py` | Tests for `HNSWIndex`, `VectorIndex` | chunkforge.index | - |
+| `tests/test_index_store.py` | Tests for persistent index: round-trip serialization, staleness, corrupt file, search-after-reload | chunkforge.index_store | - |
 | `tests/test_mcp_stdio.py` | Tests for MCP stdio server: tool logic, engine creation, graceful fallback | chunkforge.mcp_stdio | - |
 | `tests/test_storage_migration.py` | Tests for schema migration, content column, JSON serialization | chunkforge.storage | - |
 | `pyproject.toml` | Package configuration, dependencies, entry points | - | - |
@@ -49,6 +51,7 @@ chunkforge/__init__.py
       -> chunkforge.storage (StorageBackend)
           -> chunkforge.session_storage (SessionStorage)
       -> chunkforge.index (VectorIndex)
+      -> chunkforge.index_store (save/load/staleness)
       -> chunkforge.chunkers (TextChunker, CodeChunker, optional chunkers)
           -> chunkforge.chunkers.base (BaseChunker, Chunk)
               -> chunkforge.chunkers.numpy_compat (np, cosine_similarity)
@@ -77,7 +80,7 @@ chunkforge.index (standalone, no internal deps)
 - **Single Chunk class**: `chunkforge.chunkers.base.Chunk` is the unified dataclass used everywhere. `core.py` re-exports it for backward compat.
 - **Engine delegates to SessionManager**: `engine.py` holds a `SessionManager` and delegates `save_kv_state`, `rollback`, `prune_chunks`, `get_relevant_kv` to it — no duplicated session logic.
 - **Engine pattern**: `engine.py` is the main orchestrator. It initializes chunkers, VectorIndex, StorageBackend, and SessionManager, and wires them together.
-- **HNSW index**: Rebuilt from SQLite on startup via `storage.search_chunks()`. Used for `search()`, `get_relevant_kv()`, and change detection.
+- **HNSW index persistence**: Index serialized to `indices/hnsw_index.json.zlib` after mutations. On startup, loaded from disk if chunk IDs hash matches; otherwise rebuilt from SQLite. Managed by `index_store.py`.
 - **Content persistence**: Chunk text stored in SQLite `content` column, retrievable without re-reading source files.
 - **JSON serialization**: Session storage uses JSON+zlib. No pickle fallback (removed in v0.5.1).
 - **Signature compatibility**: `numpy_compat.py` is the single source for `sig_to_bytes()`, `sig_from_bytes()`, `cosine_similarity()`. All modules import from there.

@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned
-- Web UI for browsing chunks
-- Plugin system for custom chunkers
-- Persistent HNSW index serialization
+## [0.5.2] - 2026-03-13
+
+### Added
+- **Persistent HNSW index serialization** — index saved to `~/.chunkforge/indices/hnsw_index.json.zlib` after indexing or change detection. Loaded on startup if fresh (chunk IDs hash matches), otherwise rebuilt from SQLite. Eliminates redundant O(n) rebuild on every startup.
+- **`to_dict()`/`from_dict()` on `HNSWIndex` and `VectorIndex`** — serialization methods for round-tripping the full graph structure
+- **`index_store.py` module** — `save_index()`, `load_index()`, `load_if_fresh()`, `compute_chunk_ids_hash()` functions for persistent index management
+- **14 new tests** in `test_index_store.py` — round-trip serialization, staleness detection, corrupt file handling, search-after-reload integration
 
 ## [0.5.1] - 2026-03-13
 
@@ -246,6 +249,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.5.2 | 2026-03-13 | Persistent HNSW index serialization — skip rebuild on startup |
 | 0.5.1 | 2026-03-13 | Codebase audit: bug fixes, dead code removal, deduplication, engine delegates to SessionManager |
 | 0.5.0 | 2026-03-13 | Context cache overhaul: unified chunks, HNSW wired in, search API, real MCP, JSON storage |
 | 0.4.1 | 2026-03-13 | Bug fixes, dead code removal, code simplification |

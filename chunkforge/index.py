@@ -429,6 +429,43 @@ class HNSWIndex:
         self.max_level = 0
         self._insert_count = 0
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize index state to a plain dict."""
+        nodes = {}
+        for nid, node in self.nodes.items():
+            nodes[nid] = {
+                "v": node.vector,
+                "l": node.level,
+                "c": {str(k): sorted(v) for k, v in node.connections.items()},
+            }
+        return {
+            "M": self.M, "M0": self.M_max0,
+            "ef_c": self.ef_construction, "ef_s": self.ef_search,
+            "ml": self.ml, "ep": self.entry_point,
+            "max_l": self.max_level, "nodes": nodes,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "HNSWIndex":
+        """Reconstruct index from serialized dict."""
+        idx = cls(
+            M=data["M"], ef_construction=data["ef_c"],
+            ef_search=data["ef_s"], ml=data["ml"],
+        )
+        idx.M_max0 = data["M0"]
+        idx.entry_point = data["ep"]
+        idx.max_level = data["max_l"]
+        for nid, ndata in data["nodes"].items():
+            node = IndexNode(
+                node_id=nid, vector=ndata["v"], level=ndata["l"],
+                connections=defaultdict(set, {
+                    int(k): set(v) for k, v in ndata["c"].items()
+                }),
+            )
+            idx.nodes[nid] = node
+        idx._insert_count = len(idx.nodes)
+        return idx
+
 
 class VectorIndex:
     """
@@ -510,3 +547,15 @@ class VectorIndex:
         """Clear all chunks from the index."""
         self.index.clear()
         self.chunk_vectors.clear()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dict (HNSW graph + chunk vectors)."""
+        return {"hnsw": self.index.to_dict(), "vectors": self.chunk_vectors}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "VectorIndex":
+        """Reconstruct from serialized dict."""
+        vi = cls.__new__(cls)
+        vi.index = HNSWIndex.from_dict(data["hnsw"])
+        vi.chunk_vectors = data["vectors"]
+        return vi

@@ -67,6 +67,23 @@ Full codebase audit performed. Changes:
 ### Test Results
 - All 49 tests passing (previously 6 were failing due to optional dep detection bug)
 
+## 2026-03-13 — v0.5.2: Persistent HNSW Index
+
+Added persistent serialization for the HNSW vector index so it doesn't rebuild from SQLite on every startup.
+
+### New Files
+- `chunkforge/index_store.py` (~90 LOC) — save/load/staleness detection for VectorIndex
+- `tests/test_index_store.py` (~160 LOC) — 14 tests for serialization, staleness, integration
+
+### Changes
+- `index.py`: Added `to_dict()`/`from_dict()` on both `HNSWIndex` and `VectorIndex`
+- `engine.py`: Replaced `_rebuild_index()` with `_load_or_rebuild_index()` that checks persisted index first; added `_save_index()` called after `index_documents()` and `detect_changes_and_update()`
+- Staleness detection via SHA-256 hash of sorted chunk IDs — if chunks changed, persisted index is discarded and rebuilt
+- Index file: `~/.chunkforge/indices/hnsw_index.json.zlib` (JSON + zlib, atomic writes via temp-then-rename)
+
+### Test Results
+- 102 tests passing (was 88), 1 skipped (MCP SDK not installed)
+
 ## 2026-03-13 — v0.5.1: Codebase Audit & Cleanup
 
 Full codebase audit via 6 parallel agents, followed by systematic fixes.

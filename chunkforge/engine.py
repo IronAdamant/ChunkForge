@@ -21,6 +21,11 @@ from chunkforge.chunkers import (
     HAS_VIDEO_CHUNKER,
 )
 from chunkforge.index import VectorIndex
+from chunkforge.index_store import (
+    compute_chunk_ids_hash,
+    load_if_fresh,
+    save_index,
+)
 from chunkforge.session import SessionManager
 from chunkforge.storage import StorageBackend
 
@@ -57,8 +62,7 @@ class ChunkForge:
         self.merge_threshold = merge_threshold
         self.change_threshold = change_threshold
         self._init_chunkers()
-        self.vector_index = VectorIndex()
-        self._rebuild_index()
+        self.vector_index = self._load_or_rebuild_index()
         self.session_manager = SessionManager(self.storage, self.vector_index)
 
     def _init_chunkers(self) -> None:
@@ -86,14 +90,27 @@ class ChunkForge:
         if HAS_VIDEO_CHUNKER:
             self.chunkers["video"] = VideoChunker()
 
-    def _rebuild_index(self) -> None:
-        """Rebuild HNSW index from stored chunk signatures in SQLite."""
+    def _load_or_rebuild_index(self) -> VectorIndex:
+        """Load persisted index if fresh, otherwise rebuild from SQLite."""
+        current_hash = compute_chunk_ids_hash(self.storage)
+        index = load_if_fresh(self.storage.index_dir, current_hash)
+        if index is not None:
+            return index
+
+        index = VectorIndex()
         for chunk in self.storage.search_chunks():
             try:
                 sig = sig_from_bytes(chunk["semantic_signature"])
-                self.vector_index.add_chunk(chunk["chunk_id"], sig_to_list(sig))
+                index.add_chunk(chunk["chunk_id"], sig_to_list(sig))
             except Exception:
                 pass
+        save_index(index, current_hash, self.storage.index_dir)
+        return index
+
+    def _save_index(self) -> None:
+        """Persist current index to disk."""
+        current_hash = compute_chunk_ids_hash(self.storage)
+        save_index(self.vector_index, current_hash, self.storage.index_dir)
 
     def detect_modality(self, file_path: str) -> str:
         """Detect file modality."""
@@ -193,6 +210,9 @@ class ChunkForge:
 
             except Exception as e:
                 results["errors"].append({"path": path_str, "error": str(e)})
+
+        if results["indexed"]:
+            self._save_index()
 
         return results
 
@@ -376,6 +396,9 @@ class ChunkForge:
                     chunk_count=len(new_chunks),
                     last_modified=path.stat().st_mtime,
                 )
+
+        if results["modified"]:
+            self._save_index()
 
         return results
 

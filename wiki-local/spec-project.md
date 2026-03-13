@@ -71,8 +71,15 @@ User / Agent
 - Pure-Python Hierarchical Navigable Small World graph
 - O(log n) approximate nearest neighbor search
 - `VectorIndex` wrapper for chunk-specific operations
+- `to_dict()`/`from_dict()` for serialization round-trips
 - Wired into engine for search and change detection
 - Standalone module with zero internal dependencies
+
+### `index_store.py` — Index Persistence
+- Saves/loads `VectorIndex` to compressed JSON (`indices/hnsw_index.json.zlib`)
+- Staleness detection via SHA-256 hash of sorted chunk IDs
+- Atomic writes via temp-file-then-rename
+- Engine calls `_save_index()` after `index_documents()` and `detect_changes_and_update()`
 
 ### `mcp_stdio.py` — MCP Server (JSON-RPC over stdio)
 - Real MCP server using JSON-RPC protocol over stdio
