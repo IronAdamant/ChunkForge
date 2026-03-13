@@ -7,7 +7,7 @@ Requires librosa for audio processing.
 Install: pip install chunkforge[audio]
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from chunkforge.chunkers.base import BaseChunker, Chunk
 
@@ -191,44 +191,3 @@ class AudioChunker(BaseChunker):
             "zero_crossing_rate": float(zero_crossing_rate),
             "rms": float(rms),
         }
-
-
-class AudioChunk(Chunk):
-    """Audio-specific chunk with enhanced features."""
-    
-    def _compute_semantic_signature(self, signature_dim: int = 128) -> List[float]:
-        """
-        Compute semantic signature for audio.
-        
-        Uses MFCC and spectral features.
-        """
-        signature = [0.0] * signature_dim
-        
-        # MFCC features (first 13 dimensions)
-        mfcc = self.metadata.get("mfcc_mean", [])
-        for i, val in enumerate(mfcc[:13]):
-            signature[i] = float(val)
-        
-        # Spectral features (next 5 dimensions)
-        spectral = self.metadata.get("spectral_features", {})
-        signature[13] = spectral.get("spectral_centroid", 0.0) / 10000.0
-        signature[14] = spectral.get("spectral_bandwidth", 0.0) / 10000.0
-        signature[15] = spectral.get("spectral_rolloff", 0.0) / 10000.0
-        signature[16] = spectral.get("zero_crossing_rate", 0.0)
-        signature[17] = spectral.get("rms", 0.0)
-        
-        # Duration (dimension 18)
-        duration = self.metadata.get("duration", 0.0)
-        signature[18] = duration / 60.0  # Normalize by minute
-        
-        # Normalize
-        norm = sum(x * x for x in signature) ** 0.5
-        if norm > 0:
-            signature = [x / norm for x in signature]
-        
-        return signature
-    
-    def _estimate_token_count(self) -> int:
-        """Estimate token count for audio (1 token per second)."""
-        duration = self.metadata.get("duration", 0.0)
-        return max(1, int(duration))

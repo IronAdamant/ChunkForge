@@ -249,6 +249,16 @@ class Chunk:
         return float(dot_product / (norm1 * norm2))
 
 
+def _cosine_similarity(sig1: Any, sig2: Any) -> float:
+    """Compute cosine similarity between two signature vectors."""
+    dot = np.dot(sig1, sig2)
+    norm1 = np.linalg.norm(sig1)
+    norm2 = np.linalg.norm(sig2)
+    if norm1 > 0 and norm2 > 0:
+        return float(dot / (norm1 * norm2))
+    return 0.0
+
+
 class ChunkForge:
     """
     Main ChunkForge engine.
@@ -321,35 +331,6 @@ class ChunkForge:
         
         if HAS_VIDEO_CHUNKER:
             self.chunkers["video"] = VideoChunker()
-    
-    def get_chunker(self, file_path: str) -> Optional[Any]:
-        """
-        Get appropriate chunker for a file.
-        
-        Args:
-            file_path: Path to file
-            
-        Returns:
-            Chunker instance or None if no chunker available
-        """
-        ext = Path(file_path).suffix.lower()
-        
-        # Check code chunker first (more specific)
-        if self.chunkers["code"].can_handle(file_path):
-            return self.chunkers["code"]
-        
-        # Check other chunkers
-        for modality, chunker in self.chunkers.items():
-            if modality in ("text", "code"):
-                continue
-            if chunker.can_handle(file_path):
-                return chunker
-        
-        # Fall back to text chunker
-        if self.chunkers["text"].can_handle(file_path):
-            return self.chunkers["text"]
-        
-        return None
     
     def detect_modality(self, file_path: str) -> str:
         """
@@ -784,16 +765,7 @@ class ChunkForge:
                             old_meta["semantic_signature"], dtype=np.float32
                         )
                         new_sig = new_chunk.semantic_signature
-                        
-                        # Cosine similarity
-                        dot = np.dot(old_sig, new_sig)
-                        norm_old = np.linalg.norm(old_sig)
-                        norm_new = np.linalg.norm(new_sig)
-                        
-                        if norm_old > 0 and norm_new > 0:
-                            similarity = dot / (norm_old * norm_new)
-                        else:
-                            similarity = 0.0
+                        similarity = _cosine_similarity(old_sig, new_sig)
                         
                         if similarity >= self.change_threshold:
                             # Semantically similar - lightweight double-check
@@ -854,15 +826,7 @@ class ChunkForge:
             
             # Compute similarity with query
             query_sig = query_chunk.semantic_signature
-            
-            dot = np.dot(query_sig, chunk_sig)
-            norm_query = np.linalg.norm(query_sig)
-            norm_chunk = np.linalg.norm(chunk_sig)
-            
-            if norm_query > 0 and norm_chunk > 0:
-                similarity = dot / (norm_query * norm_chunk)
-            else:
-                similarity = 0.0
+            similarity = _cosine_similarity(query_sig, chunk_sig)
             
             scored_chunks.append((similarity, chunk_meta))
         

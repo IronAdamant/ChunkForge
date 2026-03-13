@@ -13,6 +13,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Web UI for browsing chunks
 - Plugin system for custom chunkers
 
+## [0.4.1] - 2026-03-13
+
+### Fixed
+- **Optional dependency detection** - `HAS_IMAGE_CHUNKER`, `HAS_PDF_CHUNKER`, `HAS_AUDIO_CHUNKER`, `HAS_VIDEO_CHUNKER` flags now correctly check whether the underlying library (Pillow, pymupdf, librosa, opencv) is installed, not just whether the chunker module imported. Previously, `ChunkForge()` would crash with `ImportError` when optional deps were missing.
+- **msgspec guard in storage** - `store_kv_state()` and `load_kv_state()` now check `HAS_MSGSPEC` before calling `msgspec` methods. Previously crashed with `AttributeError` when msgspec was not installed.
+- **Test version assertion** - `test_get_stats` expected version `"0.1.0"` instead of `"0.4.0"`.
+- **README line count** - Updated codebase size from ~2,000 to ~4,800 lines.
+
+### Removed
+- **Dead chunk subclasses** - Removed `TextChunk`, `PDFChunk`, `ImageChunk`, `AudioChunk`, `VideoChunk` classes (never imported or instantiated anywhere).
+- **Unused methods** - Removed `ChunkForge.get_chunker()` and `BaseChunker.read_file()` (defined but never called).
+- **Unused imports** - Removed `import io` from video.py, unused `Optional`, `Counter`, `Tuple` type imports across chunker modules.
+
+### Changed
+- **Deduplicated paragraph chunking** - Merged `TextChunker._chunk_paragraphs()` and `_chunk_adaptive()` (90%+ identical) into a single `_chunk_by_paragraphs(adaptive)` method.
+- **Extracted cosine similarity helper** - Duplicated cosine similarity computation in `detect_changes_and_update()` and `get_relevant_kv()` extracted to shared `_cosine_similarity()` function.
+
 ## [0.4.0] - 2026-03-12
 
 ### Added
@@ -163,6 +180,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.4.1 | 2026-03-13 | Bug fixes, dead code removal, code simplification |
+| 0.4.0 | 2026-03-12 | Vector index, compression, adaptive chunking |
+| 0.3.0 | 2026-03-12 | Multi-modal support |
+| 0.2.0 | 2026-03-12 | Test suite, CI/CD, optional dependencies |
 | 0.1.0 | 2026-03-12 | Initial release |
 
 ---

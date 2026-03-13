@@ -177,22 +177,3 @@ class BaseChunker(ABC):
         """
         ext = Path(file_path).suffix.lower()
         return ext in self.supported_extensions()
-    
-    def read_file(self, file_path: str) -> Any:
-        """
-        Read file content.
-        
-        Args:
-            file_path: Path to file
-            
-        Returns:
-            File content (str for text, bytes for binary)
-        """
-        path = Path(file_path)
-        
-        # Try text first
-        try:
-            return path.read_text(encoding="utf-8", errors="replace")
-        except (UnicodeDecodeError, ValueError):
-            # Fall back to binary
-            return path.read_bytes()

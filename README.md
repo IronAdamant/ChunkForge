@@ -74,7 +74,7 @@ ChunkForge is designed with security in mind:
 - **No model downloads** - Semantic signatures use simple TF-style features, not ML models
 - **No API calls** - Everything runs locally, no data leaves your machine
 - **Optional deps are safe** - `msgspec` and `numpy` are pure computation libraries with no network access
-- **Minimal codebase** - ~2,000 lines of Python, easy to audit
+- **Minimal codebase** - ~4,800 lines of Python, easy to audit
 
 For maximum security:
 ```bash

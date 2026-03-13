@@ -9,7 +9,7 @@ Install: pip install chunkforge[image]
 
 import hashlib
 import io
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from chunkforge.chunkers.base import BaseChunker, Chunk
 
@@ -275,43 +275,3 @@ class ImageChunker(BaseChunker):
         else:
             # Other modes - return empty
             return [0.0] * bins
-
-
-class ImageChunk(Chunk):
-    """Image-specific chunk with enhanced features."""
-    
-    def _compute_semantic_signature(self, signature_dim: int = 128) -> List[float]:
-        """
-        Compute semantic signature for image.
-        
-        Uses perceptual hash and color histogram.
-        """
-        signature = [0.0] * signature_dim
-        
-        # Use perceptual hash (first 64 dimensions)
-        phash = self.metadata.get("perceptual_hash", "")
-        if phash:
-            # Convert hex to binary
-            try:
-                hash_int = int(phash, 16)
-                hash_bits = bin(hash_int)[2:].zfill(64)
-                for i, bit in enumerate(hash_bits[:64]):
-                    signature[i] = float(bit)
-            except ValueError:
-                pass
-        
-        # Use color histogram (next 64 dimensions)
-        histogram = self.metadata.get("histogram", [])
-        for i, val in enumerate(histogram[:64]):
-            signature[64 + i] = float(val)
-        
-        # Normalize
-        norm = sum(x * x for x in signature) ** 0.5
-        if norm > 0:
-            signature = [x / norm for x in signature]
-        
-        return signature
-    
-    def _estimate_token_count(self) -> int:
-        """Estimate token count for image (1 token per image)."""
-        return 1

@@ -7,7 +7,7 @@ Requires pymupdf for PDF parsing.
 Install: pip install chunkforge[pdf]
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from chunkforge.chunkers.base import BaseChunker, Chunk
 
@@ -168,68 +168,3 @@ class PDFChunker(BaseChunker):
             ))
         
         return chunks
-
-
-class PDFChunk(Chunk):
-    """PDF-specific chunk with enhanced features."""
-    
-    def _compute_semantic_signature(self, signature_dim: int = 128) -> List[float]:
-        """
-        Compute semantic signature for PDF.
-        
-        Uses text-based features (same as text chunker).
-        """
-        signature = [0.0] * signature_dim
-        
-        if not isinstance(self.content, str):
-            return signature
-        
-        # Use same approach as text chunker
-        import re
-        from collections import Counter
-        
-        text = self.content.lower()
-        
-        # Character trigrams (first 64 dimensions)
-        trigrams: Counter = Counter()
-        for i in range(len(text) - 2):
-            trigrams[text[i:i+3]] += 1
-        
-        for i, (trigram, count) in enumerate(trigrams.most_common(64)):
-            if i >= 64:
-                break
-            signature[i] = count / max(len(text), 1)
-        
-        # Word frequencies (next 32 dimensions)
-        words: Counter = Counter()
-        word_list = re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', text)
-        for word in word_list:
-            if len(word) > 2:
-                words[word] += 1
-        
-        for i, (word, count) in enumerate(words.most_common(32)):
-            if i >= 32:
-                break
-            signature[64 + i] = count / max(len(words), 1)
-        
-        # Structural features (next 32 dimensions)
-        lines = self.content.split("\n")
-        signature[96] = len(lines) / 100.0
-        signature[97] = sum(len(line) for line in lines) / max(len(self.content), 1)
-        
-        # Page info from metadata
-        page_count = self.metadata.get("page_count", 1)
-        signature[98] = page_count / 100.0
-        
-        # Normalize
-        norm = sum(x * x for x in signature) ** 0.5
-        if norm > 0:
-            signature = [x / norm for x in signature]
-        
-        return signature
-    
-    def _estimate_token_count(self) -> int:
-        """Estimate token count for PDF text."""
-        if isinstance(self.content, str):
-            return max(1, len(self.content) // 4)
-        return 1

@@ -218,7 +218,7 @@ class TestChunkForge:
         assert "version" in stats
         assert "storage" in stats
         assert "config" in stats
-        assert stats["version"] == "0.1.0"
+        assert stats["version"] == "0.4.0"
 
 
 class TestStorageBackend:

@@ -7,8 +7,7 @@ chunk sizing and sliding window for overlapping chunks. Zero dependencies.
 """
 
 import re
-from collections import Counter
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from chunkforge.chunkers.base import BaseChunker, Chunk
 
@@ -90,104 +89,47 @@ class TextChunker(BaseChunker):
     
     def _chunk_paragraphs(self, content: str, document_path: str) -> List[Chunk]:
         """Standard paragraph-based chunking."""
-        # Split into paragraphs
-        paragraphs = re.split(r'\n\s*\n', content)
-        
-        chunks: List[Chunk] = []
-        current_text = ""
-        current_start = 0
-        chunk_index = 0
-        
-        for para in paragraphs:
-            para = para.strip()
-            if not para:
-                continue
-            
-            # Estimate tokens
-            combined_tokens = (len(current_text) + len(para)) // 4
-            
-            if combined_tokens > self.chunk_size and current_text:
-                # Create chunk
-                chunk = Chunk(
-                    content=current_text.strip(),
-                    modality="text",
-                    start_pos=current_start,
-                    end_pos=current_start + len(current_text),
-                    document_path=document_path,
-                    chunk_index=chunk_index,
-                )
-                chunks.append(chunk)
-                chunk_index += 1
-                
-                # Start new chunk
-                current_start = current_start + len(current_text)
-                current_text = para + "\n\n"
-            else:
-                # Add to current chunk
-                if current_text:
-                    current_text += para + "\n\n"
-                else:
-                    current_text = para + "\n\n"
-        
-        # Add final chunk
-        if current_text.strip():
-            chunk = Chunk(
-                content=current_text.strip(),
-                modality="text",
-                start_pos=current_start,
-                end_pos=current_start + len(current_text),
-                document_path=document_path,
-                chunk_index=chunk_index,
-            )
-            chunks.append(chunk)
-        
-        # Handle empty content
-        if not chunks:
-            chunks.append(Chunk(
-                content="",
-                modality="text",
-                start_pos=0,
-                end_pos=0,
-                document_path=document_path,
-                chunk_index=0,
-            ))
-        
-        return chunks
-    
+        return self._chunk_by_paragraphs(content, document_path, adaptive=False)
+
     def _chunk_adaptive(self, content: str, document_path: str) -> List[Chunk]:
+        """Adaptive chunking that adjusts size based on content density."""
+        return self._chunk_by_paragraphs(content, document_path, adaptive=True)
+
+    def _chunk_by_paragraphs(
+        self, content: str, document_path: str, adaptive: bool
+    ) -> List[Chunk]:
         """
-        Adaptive chunking that adjusts size based on content density.
-        
-        Dense content (code, lists) gets smaller chunks.
-        Sparse content (prose) gets larger chunks.
+        Paragraph-based chunking with optional adaptive sizing.
+
+        When adaptive=True, chunk size is adjusted based on content density:
+        dense content (code, lists) gets smaller chunks, sparse content (prose)
+        gets larger chunks.
         """
-        # Split into paragraphs
         paragraphs = re.split(r'\n\s*\n', content)
-        
+
         chunks: List[Chunk] = []
         current_text = ""
         current_start = 0
         chunk_index = 0
-        
+
         for para in paragraphs:
             para = para.strip()
             if not para:
                 continue
-            
-            # Calculate content density
-            density = self._content_density(para)
-            
-            # Adjust chunk size based on density
-            # High density (code, lists) → smaller chunks
-            # Low density (prose) → larger chunks
-            adjusted_size = int(self.chunk_size * (1.0 - density * 0.5))
-            adjusted_size = max(self.chunk_size // 2, min(adjusted_size, self.max_chunk_size))
-            
-            # Estimate tokens
+
+            # Determine target size for this paragraph
+            metadata: Dict[str, Any] = {}
+            if adaptive:
+                density = self._content_density(para)
+                target_size = int(self.chunk_size * (1.0 - density * 0.5))
+                target_size = max(self.chunk_size // 2, min(target_size, self.max_chunk_size))
+                metadata = {"density": density, "adjusted_size": target_size}
+            else:
+                target_size = self.chunk_size
+
             combined_tokens = (len(current_text) + len(para)) // 4
-            
-            if combined_tokens > adjusted_size and current_text:
-                # Create chunk
+
+            if combined_tokens > target_size and current_text:
                 chunk = Chunk(
                     content=current_text.strip(),
                     modality="text",
@@ -195,22 +137,19 @@ class TextChunker(BaseChunker):
                     end_pos=current_start + len(current_text),
                     document_path=document_path,
                     chunk_index=chunk_index,
-                    metadata={"density": density, "adjusted_size": adjusted_size},
+                    metadata=metadata,
                 )
                 chunks.append(chunk)
                 chunk_index += 1
-                
-                # Start new chunk
+
                 current_start = current_start + len(current_text)
                 current_text = para + "\n\n"
             else:
-                # Add to current chunk
                 if current_text:
                     current_text += para + "\n\n"
                 else:
                     current_text = para + "\n\n"
-        
-        # Add final chunk
+
         if current_text.strip():
             chunk = Chunk(
                 content=current_text.strip(),
@@ -221,8 +160,7 @@ class TextChunker(BaseChunker):
                 chunk_index=chunk_index,
             )
             chunks.append(chunk)
-        
-        # Handle empty content
+
         if not chunks:
             chunks.append(Chunk(
                 content="",
@@ -232,7 +170,7 @@ class TextChunker(BaseChunker):
                 document_path=document_path,
                 chunk_index=0,
             ))
-        
+
         return chunks
     
     def _chunk_sliding_window(self, content: str, document_path: str) -> List[Chunk]:
@@ -350,66 +288,3 @@ class TextChunker(BaseChunker):
         density = (line_score * 0.3 + special_score * 0.3 + indent_score * 0.2 + list_score * 0.2)
         
         return min(1.0, max(0.0, density))
-
-
-class TextChunk(Chunk):
-    """Text-specific chunk with enhanced semantic signature."""
-    
-    def _compute_semantic_signature(self, signature_dim: int = 128) -> List[float]:
-        """
-        Compute semantic signature for text.
-        
-        Uses character trigrams, word frequencies, and structural features.
-        """
-        signature = [0.0] * signature_dim
-        
-        if not isinstance(self.content, str):
-            return signature
-        
-        text = self.content.lower()
-        
-        # Feature 1: Character trigram frequencies (first 64 dimensions)
-        trigrams: Counter = Counter()
-        for i in range(len(text) - 2):
-            trigrams[text[i:i+3]] += 1
-        
-        for i, (trigram, count) in enumerate(trigrams.most_common(64)):
-            if i >= 64:
-                break
-            signature[i] = count / max(len(text), 1)
-        
-        # Feature 2: Word frequency distribution (next 32 dimensions)
-        words: Counter = Counter()
-        word_list = re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', text)
-        for word in word_list:
-            if len(word) > 2:
-                words[word] += 1
-        
-        for i, (word, count) in enumerate(words.most_common(32)):
-            if i >= 32:
-                break
-            signature[64 + i] = count / max(len(words), 1)
-        
-        # Feature 3: Structural features (next 32 dimensions)
-        lines = self.content.split("\n")
-        signature[96] = len(lines) / 100.0
-        signature[97] = sum(len(line) for line in lines) / max(len(self.content), 1)
-        signature[98] = sum(1 for line in lines if line.strip().startswith("#")) / max(len(lines), 1)
-        signature[99] = sum(1 for line in lines if line.strip().startswith("def ")) / max(len(lines), 1)
-        signature[100] = sum(1 for line in lines if line.strip().startswith("class ")) / max(len(lines), 1)
-        signature[101] = self.content.count("(") / max(len(self.content), 1)
-        signature[102] = self.content.count("{") / max(len(self.content), 1)
-        signature[103] = self.content.count("[") / max(len(self.content), 1)
-        
-        # Normalize to unit vector
-        norm = sum(x * x for x in signature) ** 0.5
-        if norm > 0:
-            signature = [x / norm for x in signature]
-        
-        return signature
-    
-    def _estimate_token_count(self) -> int:
-        """Estimate token count for text."""
-        if isinstance(self.content, str):
-            return max(1, len(self.content) // 4)
-        return 1

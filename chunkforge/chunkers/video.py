@@ -7,8 +7,7 @@ Requires opencv-python for video processing.
 Install: pip install chunkforge[video]
 """
 
-import io
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from chunkforge.chunkers.base import BaseChunker, Chunk
 
@@ -239,57 +238,3 @@ class VideoChunker(BaseChunker):
         
         # Convert to hex
         return hex(int(bits, 2))[2:].zfill(16)
-
-
-class VideoChunk(Chunk):
-    """Video-specific chunk with enhanced features."""
-    
-    def _compute_semantic_signature(self, signature_dim: int = 128) -> List[float]:
-        """
-        Compute semantic signature for video.
-        
-        Uses keyframe hashes and temporal features.
-        """
-        signature = [0.0] * signature_dim
-        
-        # Keyframe hashes (first 64 dimensions)
-        hashes = self.metadata.get("keyframe_hashes", [])
-        for i, h in enumerate(hashes[:4]):
-            # Convert hash to features
-            try:
-                hash_int = int(h, 16)
-                hash_bits = bin(hash_int)[2:].zfill(16)
-                for j, bit in enumerate(hash_bits[:16]):
-                    idx = i * 16 + j
-                    if idx < 64:
-                        signature[idx] = float(bit)
-            except ValueError:
-                pass
-        
-        # Temporal features (next 32 dimensions)
-        duration = self.metadata.get("duration", 0.0)
-        signature[64] = duration / 60.0  # Normalize by minute
-        
-        fps = self.metadata.get("fps", 0.0)
-        signature[65] = fps / 60.0
-        
-        keyframe_count = self.metadata.get("keyframe_count", 0)
-        signature[66] = keyframe_count / 100.0
-        
-        # Resolution features
-        width = self.metadata.get("width", 0)
-        height = self.metadata.get("height", 0)
-        signature[67] = width / 1920.0
-        signature[68] = height / 1080.0
-        
-        # Normalize
-        norm = sum(x * x for x in signature) ** 0.5
-        if norm > 0:
-            signature = [x / norm for x in signature]
-        
-        return signature
-    
-    def _estimate_token_count(self) -> int:
-        """Estimate token count for video (1 token per second)."""
-        duration = self.metadata.get("duration", 0.0)
-        return max(1, int(duration))

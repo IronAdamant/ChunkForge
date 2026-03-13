@@ -417,12 +417,14 @@ class StorageBackend:
         kv_path = session_kv_dir / kv_filename
         
         # Serialize and store KV data
-        try:
-            # Try msgspec first (faster)
-            encoded = msgspec.json.encode(kv_data)
-            kv_path.write_bytes(encoded)
-        except (TypeError, msgspec.EncodeError):
-            # Fallback to pickle for complex objects
+        if HAS_MSGSPEC:
+            try:
+                encoded = msgspec.json.encode(kv_data)
+                kv_path.write_bytes(encoded)
+            except (TypeError, msgspec.EncodeError):
+                with open(kv_path, "wb") as f:
+                    pickle.dump(kv_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        else:
             with open(kv_path, "wb") as f:
                 pickle.dump(kv_data, f, protocol=pickle.HIGHEST_PROTOCOL)
         
@@ -468,17 +470,19 @@ class StorageBackend:
         if not kv_path.exists():
             return None
         
-        # Try to load with msgspec first
-        try:
-            data = kv_path.read_bytes()
-            return msgspec.json.decode(data)
-        except (msgspec.DecodeError, UnicodeDecodeError):
-            # Fallback to pickle
+        # Try to load with msgspec first, then pickle
+        if HAS_MSGSPEC:
             try:
-                with open(kv_path, "rb") as f:
-                    return pickle.load(f)
-            except (pickle.UnpicklingError, EOFError):
-                return None
+                data = kv_path.read_bytes()
+                return msgspec.json.decode(data)
+            except (msgspec.DecodeError, UnicodeDecodeError):
+                pass
+
+        try:
+            with open(kv_path, "rb") as f:
+                return pickle.load(f)
+        except (pickle.UnpicklingError, EOFError):
+            return None
     
     def get_session_chunks(
         self,
