@@ -284,10 +284,88 @@ class ChunkForge:
 
         return merged
 
+    def annotate(
+        self,
+        target: str,
+        target_type: str,
+        content: str,
+        tags: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Add an annotation to a document or chunk."""
+        if target_type not in ("document", "chunk"):
+            return {"error": "target_type must be 'document' or 'chunk'"}
+
+        if target_type == "document":
+            doc = self.storage.get_document(target)
+            if doc is None:
+                return {"error": f"Document not found: {target}"}
+        else:
+            chunk = self.storage.get_chunk(target)
+            if chunk is None:
+                return {"error": f"Chunk not found: {target}"}
+
+        annotation_id = self.storage.store_annotation(target, target_type, content, tags)
+        return {"id": annotation_id, "target": target, "target_type": target_type}
+
+    def get_annotations(
+        self,
+        target: Optional[str] = None,
+        target_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve filtered annotations."""
+        return self.storage.get_annotations(target, target_type, tags)
+
+    def delete_annotation(self, annotation_id: int) -> Dict[str, Any]:
+        """Delete an annotation by ID."""
+        deleted = self.storage.delete_annotation(annotation_id)
+        return {"deleted": deleted, "id": annotation_id}
+
+    def get_map(self) -> Dict[str, Any]:
+        """Get a project overview: all documents with chunk counts and annotations."""
+        documents = self.storage.get_all_documents()
+        result = []
+        total_tokens = 0
+
+        for doc in documents:
+            chunks = self.storage.search_chunks(document_path=doc["document_path"])
+            doc_tokens = sum(c["token_count"] for c in chunks)
+            total_tokens += doc_tokens
+
+            annotations = self.storage.get_annotations(
+                target=doc["document_path"], target_type="document"
+            )
+
+            result.append({
+                "path": doc["document_path"],
+                "chunk_count": doc["chunk_count"],
+                "total_tokens": doc_tokens,
+                "indexed_at": doc["indexed_at"],
+                "annotations": [
+                    {"id": a["id"], "content": a["content"], "tags": a["tags"]}
+                    for a in annotations
+                ],
+            })
+
+        return {
+            "documents": result,
+            "total_documents": len(result),
+            "total_tokens": total_tokens,
+        }
+
+    def get_history(
+        self,
+        limit: int = 20,
+        document_path: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get change history entries."""
+        return self.storage.get_change_history(limit, document_path)
+
     def detect_changes_and_update(
         self,
         session_id: str,
         document_paths: Optional[List[str]] = None,
+        reason: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Detect changes in documents and update accordingly."""
         self.storage.create_session(session_id)
@@ -424,6 +502,10 @@ class ChunkForge:
 
         if results["modified"]:
             self._save_index()
+
+        self.storage.record_change(
+            summary=results, session_id=session_id, reason=reason
+        )
 
         return results
 

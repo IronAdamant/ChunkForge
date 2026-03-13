@@ -1,0 +1,153 @@
+"""
+Metadata storage for ChunkForge.
+
+Handles persistent storage of annotations and change history.
+Follows the delegate pattern used by SessionStorage.
+"""
+
+import json
+import sqlite3
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+class MetadataStorage:
+    """
+    Persistent storage for annotations and change history.
+
+    Manages annotation CRUD and change history recording.
+    """
+
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+
+    def store_annotation(
+        self,
+        target: str,
+        target_type: str,
+        content: str,
+        tags: Optional[List[str]] = None,
+    ) -> int:
+        """Store an annotation. Returns the annotation ID."""
+        now = time.time()
+        tags_json = json.dumps(tags) if tags else None
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO annotations
+                (target, target_type, content, tags, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """,
+                (target, target_type, content, tags_json, now, now),
+            )
+            conn.commit()
+            return cursor.lastrowid  # type: ignore[return-value]
+
+    def get_annotations(
+        self,
+        target: Optional[str] = None,
+        target_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve annotations with optional filters."""
+        query = "SELECT * FROM annotations WHERE 1=1"
+        params: List[Any] = []
+
+        if target is not None:
+            query += " AND target = ?"
+            params.append(target)
+
+        if target_type is not None:
+            query += " AND target_type = ?"
+            params.append(target_type)
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(query + " ORDER BY created_at DESC", params)
+            rows = [dict(row) for row in cursor.fetchall()]
+
+        # Parse tags JSON and filter by tags if requested
+        for row in rows:
+            row["tags"] = json.loads(row["tags"]) if row["tags"] else []
+
+        if tags:
+            tag_set = set(tags)
+            rows = [r for r in rows if tag_set & set(r["tags"])]
+
+        return rows
+
+    def delete_annotation(self, annotation_id: int) -> bool:
+        """Delete an annotation by ID. Returns True if deleted."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "DELETE FROM annotations WHERE id = ?", (annotation_id,)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def record_change(
+        self,
+        summary: Dict[str, Any],
+        session_id: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> int:
+        """Record a change history entry. Returns the entry ID."""
+        now = time.time()
+        summary_json = json.dumps(summary, default=str)
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO change_history
+                (timestamp, session_id, summary_json, reason)
+                VALUES (?, ?, ?, ?)
+            """,
+                (now, session_id, summary_json, reason),
+            )
+            conn.commit()
+            return cursor.lastrowid  # type: ignore[return-value]
+
+    def get_change_history(
+        self,
+        limit: int = 20,
+        document_path: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve change history entries."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM change_history ORDER BY timestamp DESC LIMIT ?",
+                (limit,),
+            )
+            rows = [dict(row) for row in cursor.fetchall()]
+
+        for row in rows:
+            row["summary"] = json.loads(row["summary_json"])
+            del row["summary_json"]
+
+        if document_path:
+            rows = [
+                r
+                for r in rows
+                if self._summary_mentions_document(r["summary"], document_path)
+            ]
+
+        return rows
+
+    @staticmethod
+    def _summary_mentions_document(
+        summary: Dict[str, Any], document_path: str
+    ) -> bool:
+        """Check if a change summary mentions a specific document."""
+        for key in ("unchanged", "removed"):
+            if document_path in summary.get(key, []):
+                return True
+        for key in ("modified", "new"):
+            for entry in summary.get(key, []):
+                if isinstance(entry, dict) and entry.get("path") == document_path:
+                    return True
+                if isinstance(entry, str) and entry == document_path:
+                    return True
+        return False

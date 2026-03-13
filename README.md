@@ -24,6 +24,9 @@ ChunkForge helps LLM agents avoid re-reading unchanged files by caching chunk da
 - **Hybrid Indexing**: SHA-256 content hashes + 128-dim semantic signatures
 - **Change Detection**: Unchanged = instant cache hit; similar = lightweight double-check; different = reprocess
 - **JSON Serialization**: KV-cache stored as JSON+zlib (no pickle, safe for agent-facing tools)
+- **Annotations**: Attach metadata notes to documents and chunks for LLM navigation
+- **Project Map**: `map` tool returns all documents with chunk counts, tokens, and annotations
+- **Change History**: Automatic recording of change detection results with optional reasons
 - **Session Management**: Sessions with rollback support and automatic pruning
 - **Persistent Storage**: SQLite metadata + filesystem cache with full rollback support
 - **HTTP REST Server**: `serve` command for HTTP API integration
@@ -222,9 +225,21 @@ for doc in context["unchanged"]:
 for doc in context["changed"]:
     print(f"{doc['path']}: needs re-indexing")
 
-# Detect changes
-changes = cf.detect_changes_and_update(session_id="my-session")
+# Detect changes (with optional reason for history)
+changes = cf.detect_changes_and_update(session_id="my-session", reason="Post-refactor check")
 print(f"Restored {changes['kv_restored']}, reprocessed {changes['kv_reprocessed']}")
+
+# Annotate documents for LLM navigation
+cf.annotate("src/main.py", "document", "Entry point, handles CLI args", tags=["architecture"])
+
+# Get project map (all documents with annotations)
+project_map = cf.get_map()
+for doc in project_map["documents"]:
+    print(f"{doc['path']}: {doc['chunk_count']} chunks, {doc['total_tokens']} tokens")
+
+# View change history
+for entry in cf.get_history(limit=10):
+    print(f"[{entry['reason']}] {entry['session_id']}")
 
 # Session management
 cf.save_kv_state("my-session", {"chunk_id": {"key": "value"}})

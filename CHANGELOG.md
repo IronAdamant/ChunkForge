@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Annotation system** — `annotate`, `get_annotations`, `delete_annotation` MCP tools for attaching metadata notes to documents and chunks
+- **Project map** — `map` MCP tool returns all documents with chunk counts, token totals, and annotations
+- **Change history** — `history` MCP tool shows logged detect_changes results with reasons and document filtering
+- **`detect_changes` reason param** — optional `reason` string stored in change history for audit trail
+- New `annotations` and `change_history` SQLite tables
+- `MetadataStorage` delegate class following `SessionStorage` pattern
+- 21 new tests (14 in `test_metadata.py`, 7 in `test_mcp_stdio.py`); total: 123
+
 ## [0.5.4] - 2026-03-13
 
 ### Fixed

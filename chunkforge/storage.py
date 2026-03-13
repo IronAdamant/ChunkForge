@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from chunkforge.metadata_storage import MetadataStorage
 from chunkforge.session_storage import SessionStorage
 
 from chunkforge.chunkers.numpy_compat import sig_to_bytes
@@ -55,8 +56,9 @@ class StorageBackend:
         self._init_database()
         self._migrate_database()
 
-        # Initialize session storage delegate
+        # Initialize storage delegates
         self._session_storage = SessionStorage(self.db_path, self.kv_dir)
+        self._metadata_storage = MetadataStorage(self.db_path)
 
     def _init_database(self) -> None:
         """Initialize SQLite database with required tables."""
@@ -124,6 +126,37 @@ class StorageBackend:
                     FOREIGN KEY (chunk_id) REFERENCES chunks(chunk_id)
                 )
             """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS annotations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    target TEXT NOT NULL,
+                    target_type TEXT NOT NULL CHECK(target_type IN ('document', 'chunk')),
+                    content TEXT NOT NULL,
+                    tags TEXT,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS change_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    session_id TEXT,
+                    summary_json TEXT NOT NULL,
+                    reason TEXT
+                )
+            """)
+
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_annotations_target "
+                "ON annotations(target, target_type)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_change_history_ts "
+                "ON change_history(timestamp)"
+            )
 
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(content_hash)"
@@ -349,6 +382,57 @@ class StorageBackend:
             row = cursor.fetchone()
             return dict(row) if row else None
 
+    # Metadata methods — delegated to MetadataStorage
+
+    def store_annotation(
+        self,
+        target: str,
+        target_type: str,
+        content: str,
+        tags: Optional[List[str]] = None,
+    ) -> int:
+        """Store an annotation on a document or chunk."""
+        return self._metadata_storage.store_annotation(target, target_type, content, tags)
+
+    def get_annotations(
+        self,
+        target: Optional[str] = None,
+        target_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve annotations with optional filters."""
+        return self._metadata_storage.get_annotations(target, target_type, tags)
+
+    def delete_annotation(self, annotation_id: int) -> bool:
+        """Delete an annotation by ID."""
+        return self._metadata_storage.delete_annotation(annotation_id)
+
+    def record_change(
+        self,
+        summary: Dict[str, Any],
+        session_id: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> int:
+        """Record a change history entry."""
+        return self._metadata_storage.record_change(summary, session_id, reason)
+
+    def get_change_history(
+        self,
+        limit: int = 20,
+        document_path: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve change history entries."""
+        return self._metadata_storage.get_change_history(limit, document_path)
+
+    def get_all_documents(self) -> List[Dict[str, Any]]:
+        """Get all indexed documents."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM documents ORDER BY document_path"
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
     # Session methods — delegated to SessionStorage
 
     def create_session(self, session_id: str) -> None:
@@ -424,6 +508,12 @@ class StorageBackend:
             cursor = conn.execute("SELECT COUNT(*) FROM chunk_history")
             version_count = cursor.fetchone()[0]
 
+            cursor = conn.execute("SELECT COUNT(*) FROM annotations")
+            annotation_count = cursor.fetchone()[0]
+
+            cursor = conn.execute("SELECT COUNT(*) FROM change_history")
+            history_count = cursor.fetchone()[0]
+
         kv_size = sum(f.stat().st_size for f in self.kv_dir.rglob("*") if f.is_file())
         db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
 
@@ -433,6 +523,8 @@ class StorageBackend:
             "session_count": session_count,
             "total_tokens": total_tokens,
             "version_count": version_count,
+            "annotation_count": annotation_count,
+            "history_count": history_count,
             "kv_cache_size_bytes": kv_size,
             "database_size_bytes": db_size,
             "storage_dir": str(self.base_dir),
@@ -446,6 +538,8 @@ class StorageBackend:
             conn.execute("DELETE FROM chunk_history")
             conn.execute("DELETE FROM chunks")
             conn.execute("DELETE FROM documents")
+            conn.execute("DELETE FROM annotations")
+            conn.execute("DELETE FROM change_history")
             conn.commit()
 
         for kv_file in self.kv_dir.rglob("*.kv"):

@@ -135,8 +135,103 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
                             "items": {"type": "string"},
                             "description": "Paths to check (default: all indexed)",
                         },
+                        "reason": {
+                            "type": "string",
+                            "description": "Reason for the change detection (stored in history)",
+                        },
                     },
                     "required": ["session_id"],
+                },
+            ),
+            Tool(
+                name="annotate",
+                description="Add an annotation to a document or chunk for LLM context",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "target": {
+                            "type": "string",
+                            "description": "Document path or chunk ID to annotate",
+                        },
+                        "target_type": {
+                            "type": "string",
+                            "enum": ["document", "chunk"],
+                            "description": "Whether target is a document or chunk",
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Annotation text",
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional tags for categorization",
+                        },
+                    },
+                    "required": ["target", "target_type", "content"],
+                },
+            ),
+            Tool(
+                name="get_annotations",
+                description="Retrieve annotations, optionally filtered by target, type, or tags",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "target": {
+                            "type": "string",
+                            "description": "Filter by document path or chunk ID",
+                        },
+                        "target_type": {
+                            "type": "string",
+                            "enum": ["document", "chunk"],
+                            "description": "Filter by target type",
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Filter by tags (any match)",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="delete_annotation",
+                description="Delete an annotation by ID",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "annotation_id": {
+                            "type": "integer",
+                            "description": "Annotation ID to delete",
+                        },
+                    },
+                    "required": ["annotation_id"],
+                },
+            ),
+            Tool(
+                name="map",
+                description="Get project overview: all documents with chunk counts, tokens, and annotations",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
+            Tool(
+                name="history",
+                description="Get change history for indexed documents",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries to return",
+                            "default": 20,
+                        },
+                        "document_path": {
+                            "type": "string",
+                            "description": "Filter by document path",
+                        },
+                    },
                 },
             ),
             Tool(
@@ -170,6 +265,31 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
                 result = engine.detect_changes_and_update(
                     session_id=arguments["session_id"],
                     document_paths=arguments.get("document_paths"),
+                    reason=arguments.get("reason"),
+                )
+            elif name == "annotate":
+                result = engine.annotate(
+                    target=arguments["target"],
+                    target_type=arguments["target_type"],
+                    content=arguments["content"],
+                    tags=arguments.get("tags"),
+                )
+            elif name == "get_annotations":
+                result = engine.get_annotations(
+                    target=arguments.get("target"),
+                    target_type=arguments.get("target_type"),
+                    tags=arguments.get("tags"),
+                )
+            elif name == "delete_annotation":
+                result = engine.delete_annotation(
+                    annotation_id=arguments["annotation_id"],
+                )
+            elif name == "map":
+                result = engine.get_map()
+            elif name == "history":
+                result = engine.get_history(
+                    limit=arguments.get("limit", 20),
+                    document_path=arguments.get("document_path"),
                 )
             elif name == "stats":
                 result = engine.get_stats()

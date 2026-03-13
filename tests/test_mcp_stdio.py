@@ -88,3 +88,79 @@ class TestMCPStdioIntegration:
         assert "version" in result
         assert result["version"] == __version__
         assert "index" in result
+
+    def test_annotate_tool_logic(self, tmp_path):
+        """Test annotate tool execution logic."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+
+        result = engine.annotate(str(test_file), "document", "Main module")
+        assert "id" in result
+
+    def test_get_annotations_tool_logic(self, tmp_path):
+        """Test get_annotations tool execution logic."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+        engine.annotate(str(test_file), "document", "Note", tags=["arch"])
+
+        result = engine.get_annotations(target=str(test_file))
+        assert len(result) == 1
+
+    def test_delete_annotation_tool_logic(self, tmp_path):
+        """Test delete_annotation tool execution logic."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+        ann = engine.annotate(str(test_file), "document", "Delete me")
+
+        result = engine.delete_annotation(ann["id"])
+        assert result["deleted"] is True
+
+    def test_map_tool_logic(self, tmp_path):
+        """Test map tool execution logic."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+
+        result = engine.get_map()
+        assert result["total_documents"] == 1
+        assert result["total_tokens"] > 0
+
+    def test_history_tool_logic(self, tmp_path):
+        """Test history tool execution logic."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+        engine.detect_changes_and_update("s1", [str(test_file)], reason="test")
+
+        result = engine.get_history()
+        assert len(result) == 1
+        assert result[0]["reason"] == "test"
+
+    def test_detect_changes_with_reason(self, tmp_path):
+        """Test detect_changes tool with reason parameter."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+
+        result = engine.detect_changes_and_update(
+            "s1", [str(test_file)], reason="Post-refactor check"
+        )
+        assert "unchanged" in result
+
+        history = engine.get_history()
+        assert history[0]["reason"] == "Post-refactor check"
