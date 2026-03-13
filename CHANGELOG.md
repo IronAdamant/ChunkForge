@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **MCP server crash on startup** — `Server.run()` in MCP SDK v1.26+ requires `InitializationOptions` with server name, version, and capabilities. Added proper initialization.
+- **MCP tools not discoverable by clients** — `ServerCapabilities` was `tools=None, resources=None`, so clients like Claude Code never requested tool listings. Now advertises `ToolsCapability()` and `ResourcesCapability()`.
 - **CLI `--version` stale** — was hardcoded `"0.5.0"`, now uses `__version__` dynamically
 - **`engine.py` version hardcoded** — `get_stats()` now uses `__version__` via lazy import
 - **Sliding window infinite loop risk** — overlap could equal chunk size causing zero forward progress; now caps overlap to ensure at least 1 sentence advance
