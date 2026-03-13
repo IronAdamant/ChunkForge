@@ -233,3 +233,61 @@ def multiply(a, b):
         merged = cf._merge_similar_chunks(chunks)
         # High similarity chunks should merge
         assert len(merged) <= len(chunks)
+
+    def test_remove_document(self, tmp_path):
+        """Test removing a document cleans up chunks, annotations, and index."""
+        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+        cf.index_documents([str(test_file)])
+
+        # Add an annotation
+        cf.annotate(str(test_file), "document", "Will be removed")
+
+        # Verify it's indexed
+        assert cf.storage.get_document(str(test_file)) is not None
+        chunks_before = cf.storage.get_document_chunks(str(test_file))
+        assert len(chunks_before) >= 1
+        index_before = cf.vector_index.get_stats()["chunk_count"]
+
+        # Remove
+        result = cf.remove_document(str(test_file))
+        assert result["removed"] is True
+        assert result["chunks_removed"] >= 1
+        assert result["annotations_removed"] == 1
+
+        # Verify cleanup
+        assert cf.storage.get_document(str(test_file)) is None
+        assert cf.storage.get_document_chunks(str(test_file)) == []
+        assert cf.get_annotations(target=str(test_file)) == []
+        assert cf.vector_index.get_stats()["chunk_count"] < index_before
+
+    def test_remove_nonexistent_document(self, tmp_path):
+        """Test removing a document that doesn't exist."""
+        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        result = cf.remove_document("/no/such/file.py")
+        assert result["removed"] is False
+
+    def test_reindex_cleans_stale_chunks(self, tmp_path):
+        """Test that re-indexing removes stale chunks."""
+        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass\ndef world(): pass")
+        cf.index_documents([str(test_file)])
+
+        old_chunks = cf.storage.get_document_chunks(str(test_file))
+        old_ids = {c["chunk_id"] for c in old_chunks}
+
+        # Rewrite file with different content
+        test_file.write_text("def completely_different(): return 42")
+        cf.index_documents([str(test_file)], force_reindex=True)
+
+        new_chunks = cf.storage.get_document_chunks(str(test_file))
+        new_ids = {c["chunk_id"] for c in new_chunks}
+
+        # Old chunks should be gone
+        for old_id in old_ids:
+            if old_id not in new_ids:
+                assert cf.storage.get_chunk(old_id) is None

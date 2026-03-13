@@ -561,6 +561,68 @@ class StorageBackend:
             "storage_dir": str(self.base_dir),
         }
 
+    def delete_chunks(self, chunk_ids: List[str]) -> int:
+        """Delete chunks and their related data. Returns count deleted."""
+        if not chunk_ids:
+            return 0
+        placeholders = ",".join("?" * len(chunk_ids))
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                f"DELETE FROM session_chunks WHERE chunk_id IN ({placeholders})",
+                chunk_ids,
+            )
+            conn.execute(
+                f"DELETE FROM chunk_history WHERE chunk_id IN ({placeholders})",
+                chunk_ids,
+            )
+            conn.execute(
+                f"DELETE FROM annotations WHERE target IN ({placeholders}) "
+                "AND target_type = 'chunk'",
+                chunk_ids,
+            )
+            cursor = conn.execute(
+                f"DELETE FROM chunks WHERE chunk_id IN ({placeholders})",
+                chunk_ids,
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def remove_document(self, document_path: str) -> Dict[str, Any]:
+        """Remove a document and all its chunks, annotations, and history."""
+        doc = self.get_document(document_path)
+        if doc is None:
+            return {"removed": False}
+
+        # Get chunk IDs before deleting
+        chunks = self.get_document_chunks(document_path)
+        chunk_ids = [c["chunk_id"] for c in chunks]
+
+        with sqlite3.connect(self.db_path) as conn:
+            # Delete document-level annotations
+            cursor = conn.execute(
+                "DELETE FROM annotations WHERE target = ? AND target_type = 'document'",
+                (document_path,),
+            )
+            annotations_removed = cursor.rowcount
+            conn.commit()
+
+        # Delete chunks and their related data
+        chunks_removed = self.delete_chunks(chunk_ids)
+
+        # Delete document record
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "DELETE FROM documents WHERE document_path = ?", (document_path,)
+            )
+            conn.commit()
+
+        return {
+            "removed": True,
+            "chunk_ids": chunk_ids,
+            "chunks_removed": chunks_removed,
+            "annotations_removed": annotations_removed,
+        }
+
     def clear_all(self) -> None:
         """Clear all stored data."""
         with sqlite3.connect(self.db_path) as conn:

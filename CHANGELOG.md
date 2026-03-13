@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Document removal** — `remove` MCP tool and CLI command to unindex a document and clean up all its chunks, annotations, and index entries
+- **Stale chunk cleanup** — Re-indexing and change detection now automatically delete old chunks that no longer exist in the new chunking
+- `delete_chunks()` and `remove_document()` storage methods
+- Schema migration for `version` column on older databases
+
+### Fixed
+- **Schema migration gap** — Databases created before v0.4.0 lacked the `version` column on chunks table, causing index errors
+
 ## [0.5.5] - 2026-03-14
 
 ### Added

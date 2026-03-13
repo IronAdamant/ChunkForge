@@ -107,6 +107,22 @@ Examples:
         help="Force re-indexing even if unchanged",
     )
 
+    # remove command
+    remove_parser = subparsers.add_parser(
+        "remove",
+        help="Remove a document and all its data from the index",
+    )
+    remove_parser.add_argument(
+        "path",
+        help="Document path to remove",
+    )
+    remove_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output as JSON",
+    )
+
     # search command
     search_parser = subparsers.add_parser(
         "search",
@@ -336,6 +352,20 @@ def cmd_serve_mcp(args: argparse.Namespace, chunkforge: Optional[ChunkForge]) ->
     return 0
 
 
+def cmd_remove(args: argparse.Namespace, chunkforge: ChunkForge) -> int:
+    """Remove a document and all its data."""
+    result = chunkforge.remove_document(args.path)
+    if getattr(args, "output_json", False):
+        print(json.dumps(result, indent=2))
+    elif result.get("removed"):
+        print(f"Removed {args.path}: {result['chunks_removed']} chunks, "
+              f"{result['annotations_removed']} annotations deleted")
+    else:
+        print(f"Document not found: {args.path}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_index(args: argparse.Namespace, chunkforge: ChunkForge) -> int:
     """Index documents."""
     print(f"Indexing {len(args.paths)} document(s)...")
@@ -517,6 +547,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     command_handlers = {
         "serve": cmd_serve,
+        "remove": cmd_remove,
         "index": cmd_index,
         "search": cmd_search,
         "detect": cmd_detect,

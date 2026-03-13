@@ -217,3 +217,18 @@ class TestMCPStdioIntegration:
 
         result = engine.prune_history(max_entries=1)
         assert result["pruned"] == 2
+
+    def test_remove_tool_logic(self, tmp_path):
+        """Test remove tool execution logic."""
+        test_file = tmp_path / "test.py"
+        test_file.write_text("def hello(): pass")
+
+        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine.index_documents([str(test_file)])
+
+        result = engine.remove_document(str(test_file))
+        assert result["removed"] is True
+        assert result["chunks_removed"] >= 1
+
+        # Verify it's gone
+        assert engine.storage.get_document(str(test_file)) is None

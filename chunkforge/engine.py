@@ -177,6 +177,17 @@ class ChunkForge:
                 # Post-process: merge similar adjacent chunks
                 chunks = self._merge_similar_chunks(chunks)
 
+                # Clean up stale chunks from previous indexing
+                if existing_doc:
+                    old_chunks = self.storage.get_document_chunks(str(path))
+                    old_ids = {c["chunk_id"] for c in old_chunks}
+                    new_ids = {c.chunk_id for c in chunks}
+                    stale_ids = old_ids - new_ids
+                    if stale_ids:
+                        for cid in stale_ids:
+                            self.vector_index.remove_chunk(cid)
+                        self.storage.delete_chunks(list(stale_ids))
+
                 # Store chunks with content
                 for chunk in chunks:
                     chunk_content = (
@@ -225,6 +236,15 @@ class ChunkForge:
             self._save_index()
 
         return results
+
+    def remove_document(self, document_path: str) -> Dict[str, Any]:
+        """Remove a document and all its chunks, annotations, and index entries."""
+        result = self.storage.remove_document(document_path)
+        if result.get("removed"):
+            for chunk_id in result.get("chunk_ids", []):
+                self.vector_index.remove_chunk(chunk_id)
+            self._save_index()
+        return result
 
     def _merge_similar_chunks(self, chunks: List[Chunk]) -> List[Chunk]:
         """Merge adjacent chunks with high similarity."""
@@ -536,6 +556,15 @@ class ChunkForge:
                         new_chunk.chunk_id,
                         sig_to_list(new_chunk.semantic_signature),
                     )
+
+                # Clean up stale chunks
+                old_chunk_ids = {m["chunk_id"] for m in old_chunks_meta}
+                new_chunk_ids = {c.chunk_id for c in new_chunks}
+                stale_ids = old_chunk_ids - new_chunk_ids
+                if stale_ids:
+                    for cid in stale_ids:
+                        self.vector_index.remove_chunk(cid)
+                    self.storage.delete_chunks(list(stale_ids))
 
                 # Update document record
                 self.storage.store_document(

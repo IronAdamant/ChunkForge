@@ -87,6 +87,20 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
                 },
             ),
             Tool(
+                name="remove",
+                description="Remove a document and all its chunks, annotations, and index entries",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "document_path": {
+                            "type": "string",
+                            "description": "Path of the document to remove",
+                        },
+                    },
+                    "required": ["document_path"],
+                },
+            ),
+            Tool(
                 name="search",
                 description="Semantic search across indexed chunks, returns content",
                 inputSchema={
@@ -340,6 +354,10 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
                 result = engine.index_documents(
                     paths=arguments["paths"],
                     force_reindex=arguments.get("force_reindex", False),
+                )
+            elif name == "remove":
+                result = engine.remove_document(
+                    document_path=arguments["document_path"],
                 )
             elif name == "search":
                 result = engine.search(
