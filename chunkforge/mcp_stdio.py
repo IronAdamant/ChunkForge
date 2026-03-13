@@ -35,7 +35,7 @@ try:
     )
 
     from mcp.server import InitializationOptions
-    from mcp.types import ServerCapabilities
+    from mcp.types import ServerCapabilities, ToolsCapability, ResourcesCapability
 
     HAS_MCP = True
 except ImportError:
@@ -249,7 +249,10 @@ async def _run_server(storage_dir: Optional[str] = None) -> None:
     init_options = InitializationOptions(
         server_name="chunkforge",
         server_version=__version__,
-        capabilities=ServerCapabilities(tools=None, resources=None),
+        capabilities=ServerCapabilities(
+            tools=ToolsCapability(),
+            resources=ResourcesCapability(),
+        ),
     )
 
     async with stdio_server() as (read_stream, write_stream):
