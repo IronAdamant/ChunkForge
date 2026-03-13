@@ -66,3 +66,71 @@ Full codebase audit performed. Changes:
 
 ### Test Results
 - All 49 tests passing (previously 6 were failing due to optional dep detection bug)
+
+## 2026-03-13 — v0.5.1: Codebase Audit & Cleanup
+
+Full codebase audit via 6 parallel agents, followed by systematic fixes.
+
+### Bugs Fixed
+- **`detect_changes_and_update` never persisted updated chunks** — now stores re-chunked content, signatures, and document records after detecting modifications
+- **`store_chunk` INSERT OR REPLACE reset `access_count` to 0** — now uses UPDATE for existing chunks, preserving access history
+- **`prune_chunks` never updated `total_tokens` in sessions table** — now updates after pruning so session state stays accurate
+- **Binary content signatures were 64-dim vs 128-dim** — padded hash-based signatures to full 128-dim to match text signatures
+- **`results["new"]` had inconsistent types** (strings vs dicts) in `detect_changes_and_update` — now always returns dicts
+- **`store_kv_state` inconsistent compression** — msgspec fallback path now also applies zlib compression
+- **`get_session()` called per-chunk inside loop** — hoisted outside for efficiency
+
+### Dead Code Removed
+- Unused imports across 12 files: `np`/`HAS_NUMPY` (engine), `hashlib`/`Tuple` (storage), `os` (session_storage), `parse_qs`/`List` (mcp_server), `Path` (cli), `Optional` (code.py), `hashlib`/`Dict` (image.py), `Dict` (video.py), `SessionStorage` (session.py), `math` (test_index), `json` (test_mcp_stdio), `tempfile`/`Path` (test files)
+- All 4 unused conftest.py fixtures removed
+- Unused `current_start` variable in code.py `_chunk_regex`
+- Pickle fallback in session_storage.py removed (security improvement)
+
+### Duplication Resolved
+- Engine session methods (`save_kv_state`, `rollback`, `prune_chunks`, `get_relevant_kv`) now delegate to `SessionManager` instead of duplicating ~80 lines of identical logic
+- `storage.py` numpy import replaced with `sig_to_bytes()` from numpy_compat (single source of truth)
+- Raw SQL in `engine.py` (`_rebuild_index`, `detect_changes_and_update`) replaced with `StorageBackend` API methods
+- Raw SQL in `mcp_stdio.py` `read_resource` replaced with storage API
+
+### Code Simplification
+- `_estimate_token_count` collapsed identical str/bytes branches
+- `_extract_words` simplified to one-liner with Counter comprehension
+- `_extract_trigrams` removed redundant isinstance check (only called after type guard)
+- Removed redundant loop guards in `_compute_semantic_signature`
+
+### Test Results
+- All 88 tests passing, 1 skipped (MCP SDK not installed)
+
+## 2026-03-13 — v0.5.0: Complete Overhaul
+
+Major overhaul to wire all components together, reframe as a context cache, and add real MCP support.
+
+### Problems Fixed
+- `index_documents()` bypassed all chunkers, reimplemented paragraph splitting inline — now routes through CodeChunker/TextChunker
+- HNSW vector index (513 LOC, fully tested) was never imported by the engine — now wired in for all search/change detection
+- Chunk text content was discarded after indexing — now stored in SQLite `content` column
+- MCP server was HTTP REST, not JSON-RPC over stdio — added real `mcp_stdio.py` using MCP SDK
+- Pickle used for KV serialization (security risk) — replaced with JSON+zlib
+- `core.py` was 1038 LOC with two responsibilities — extracted into engine.py, session.py, session_storage.py
+- Two incompatible Chunk classes — unified to single Chunk from `chunkers.base`
+
+### New Files Created
+- `chunkforge/engine.py` (~450 LOC) — new ChunkForge class with chunker routing + HNSW
+- `chunkforge/session.py` (~200 LOC) — SessionManager class
+- `chunkforge/session_storage.py` (~280 LOC) — extracted from storage.py
+- `chunkforge/chunkers/numpy_compat.py` (~75 LOC) — shared numpy fallback
+- `chunkforge/mcp_stdio.py` (~250 LOC) — real MCP server
+- `tests/test_engine.py`, `tests/test_session.py`, `tests/test_mcp_stdio.py`, `tests/test_storage_migration.py`
+
+### Modified Files
+- `chunkforge/chunkers/base.py` — upgraded to rich 128-dim semantic signatures
+- `chunkforge/storage.py` — added content column, migration, delegated sessions
+- `chunkforge/core.py` — converted to backward-compat shim (~25 LOC)
+- `chunkforge/__init__.py` — updated exports, reframed docstring
+- `chunkforge/cli.py` — added `serve-mcp` and `search` commands
+- `chunkforge/mcp_server.py` — added `search` and `get_context` tools
+- `pyproject.toml` — version 0.5.0, new keywords, MCP optional dep, entry point
+
+### Test Results
+- 88 tests passing (was 49), 1 skipped (MCP SDK not installed)
+- New coverage: engine routing, HNSW integration, search API, content storage, schema migration, JSON serialization

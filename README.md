@@ -1,30 +1,33 @@
 # ChunkForge
 
-**Purely local, persistent KV-cache rollback and offload engine with dynamic semantic chunking and hybrid vector-database-style indexing.**
+**Local context cache for LLM agents with semantic chunking and vector search.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-green.svg)](https://github.com/IronAdamant/ChunkForge)
 
-ChunkForge enables long-horizon agents (especially 1M+ context models) to avoid ever re-scanning or re-processing unmodified documents or code. Unchanged chunks instantly restore pre-computed KV states; only modified chunks trigger a lightweight double-check. This dramatically reduces token usage and latency over multi-turn sessions or across days of development.
+ChunkForge helps LLM agents avoid re-reading unchanged files by caching chunk data with semantic search. Documents are routed through modality-specific chunkers, chunk content is stored in SQLite, and an HNSW vector index enables fast O(log n) retrieval. Only modified chunks trigger reprocessing.
 
 ## Key Features
 
 - **100% Offline & Local-Only**: No internet access, no external API calls, no cloud components
 - **Zero Required Dependencies**: Runs on Python stdlib alone—no supply chain risks
 - **Multi-Modal Support**: Text, code, images, PDFs, audio, and video (optional dependencies)
-- **Vector Index (HNSW)**: Fast O(log n) similarity search instead of O(n) scan
-- **Dynamic Semantic Chunking**: Automatically splits content into ~256-token chunks, then intelligently merges them into larger coherent blocks based on semantic similarity
+- **HNSW Vector Index**: O(log n) semantic search across all indexed chunks
+- **Semantic Search API**: `search(query)` returns chunk content ranked by relevance
+- **Context Cache API**: `get_context(paths)` returns cached chunks for unchanged files
+- **Modality-Specific Chunking**: Routes .py through AST-aware CodeChunker, .txt through TextChunker, etc.
+- **Chunk Content Storage**: Chunk text persisted in SQLite — no need to re-read source files
+- **Real MCP Server**: JSON-RPC over stdio (`serve-mcp`) for Claude Desktop integration
+- **Dynamic Semantic Chunking**: ~256-token initial chunks, intelligently merged by semantic similarity
 - **Adaptive Chunking**: Adjusts chunk size based on content density (code vs prose)
-- **Sliding Window**: Overlapping chunks for better context continuity
-- **Hybrid Indexing**: SHA-256 content hashes + enhanced semantic signatures (TF-IDF, structural features)
-- **Instant KV Restoration**: Unchanged chunks load pre-saved KV tensors instantly—no LLM re-processing
-- **Lazy Double-Check**: Modified chunks trigger targeted semantic comparison before re-processing
-- **Compressed Storage**: KV-cache files compressed with zlib (50-80% space savings)
-- **Chunk Versioning**: Track changes to chunks over time with full history
-- **Persistent Storage**: SQLite metadata + filesystem KV-cache with full rollback support
-- **Built-in MCP Server**: Minimal HTTP/JSON server for agent integration
-- **Optional Performance**: `msgspec` and `numpy` for speed (both 100% offline, with stdlib fallbacks)
+- **Hybrid Indexing**: SHA-256 content hashes + 128-dim semantic signatures
+- **Change Detection**: Unchanged = instant cache hit; similar = lightweight double-check; different = reprocess
+- **JSON Serialization**: KV-cache stored as JSON+zlib (no pickle, safe for agent-facing tools)
+- **Session Management**: Sessions with rollback support and automatic pruning
+- **Persistent Storage**: SQLite metadata + filesystem cache with full rollback support
+- **HTTP REST Server**: `serve` command for HTTP API integration
+- **Optional Performance**: `msgspec` and `numpy` for speed (with stdlib fallbacks)
 
 ## Installation
 
@@ -56,6 +59,7 @@ Optional (all 100% offline, no network):
 | `pdf` | pymupdf | PDF text extraction |
 | `audio` | librosa, numpy | Audio segmentation & features |
 | `video` | opencv-python, numpy | Video keyframe extraction |
+| `mcp` | mcp | Real MCP server (stdio transport) |
 | `all` | All of the above | Everything |
 
 ```bash
@@ -74,7 +78,8 @@ ChunkForge is designed with security in mind:
 - **No model downloads** - Semantic signatures use simple TF-style features, not ML models
 - **No API calls** - Everything runs locally, no data leaves your machine
 - **Optional deps are safe** - `msgspec` and `numpy` are pure computation libraries with no network access
-- **Minimal codebase** - ~4,800 lines of Python, easy to audit
+- **No pickle** - Session data serialized with JSON+zlib, safe for agent-facing tools
+- **Minimal codebase** - ~5,000 lines of Python, easy to audit
 
 For maximum security:
 ```bash
@@ -121,48 +126,59 @@ pip install chunkforge --no-deps
 
 ## Quick Start
 
-### 1. Start the MCP Server
+### 1. Index Documents
 
 ```bash
-# Start server on default port (9876)
-chunkforge serve
-
-# Or specify custom host/port
-chunkforge serve --host 0.0.0.0 --port 8080
-
-# Run in blocking mode (foreground)
-chunkforge serve --blocking
-```
-
-### 2. Index Documents
-
-```bash
-# Index a single document
-chunkforge index document.py
-
-# Index multiple documents
+# Index files (auto-detects modality)
 chunkforge index src/*.py docs/*.md
 
 # Force re-indexing
 chunkforge index --force document.py
 ```
 
-### 3. Detect Changes
+### 2. Semantic Search
 
 ```bash
-# Check for changes in all indexed documents
-chunkforge detect
+# Search across all indexed chunks
+chunkforge search "authentication logic" --top-k 5
 
-# Check specific documents
-chunkforge detect document.py
-
-# Use a specific session
-chunkforge detect --session my-session document.py
+# JSON output
+chunkforge search "error handling" --json
 ```
 
-### 4. View Statistics
+### 3. MCP Server (for Claude Desktop)
 
 ```bash
+# Install MCP dependency
+pip install chunkforge[mcp]
+
+# Start stdio MCP server
+chunkforge serve-mcp
+```
+
+Claude Desktop config (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "chunkforge": {
+      "command": "chunkforge",
+      "args": ["serve-mcp"]
+    }
+  }
+}
+```
+
+### 4. HTTP REST Server
+
+```bash
+# Start HTTP server on default port (9876)
+chunkforge serve --port 9876
+```
+
+### 5. Detect Changes & View Stats
+
+```bash
+chunkforge detect --session my-session
 chunkforge stats
 ```
 
@@ -173,36 +189,33 @@ chunkforge stats
 ```python
 from chunkforge import ChunkForge
 
-# Initialize ChunkForge
 cf = ChunkForge(storage_dir="~/.chunkforge")
 
-# Index documents
-result = cf.index_documents(["document.py", "README.md"])
+# Index documents (routes through modality-specific chunkers)
+result = cf.index_documents(["src/main.py", "README.md"])
 print(f"Indexed {result['total_chunks']} chunks")
 
-# Detect changes and update KV-cache
+# Semantic search — returns chunk content + metadata
+results = cf.search("authentication logic", top_k=5)
+for r in results:
+    print(f"[{r['relevance_score']:.3f}] {r['document_path']}")
+    print(f"  {r['content'][:100]}...")
+
+# Get cached context for documents
+context = cf.get_context(["src/main.py", "src/utils.py"])
+for doc in context["unchanged"]:
+    print(f"{doc['path']}: {len(doc['chunks'])} cached chunks")
+for doc in context["changed"]:
+    print(f"{doc['path']}: needs re-indexing")
+
+# Detect changes
 changes = cf.detect_changes_and_update(session_id="my-session")
-print(f"Restored {changes['kv_restored']} KV states")
+print(f"Restored {changes['kv_restored']}, reprocessed {changes['kv_reprocessed']}")
 
-# Get relevant KV for a query
-relevant = cf.get_relevant_kv(
-    session_id="my-session",
-    query="How does authentication work?",
-    top_k=5,
-)
-print(f"Found {len(relevant['chunks'])} relevant chunks")
-
-# Save KV state
-cf.save_kv_state(
-    session_id="my-session",
-    kv_data={"chunk_id_1": {"key": "value"}},
-)
-
-# Rollback to previous turn
-cf.rollback(session_id="my-session", target_turn=2)
-
-# Prune low-relevance chunks
-cf.prune_chunks(session_id="my-session", max_tokens=100000)
+# Session management
+cf.save_kv_state("my-session", {"chunk_id": {"key": "value"}})
+cf.rollback("my-session", target_turn=2)
+cf.prune_chunks("my-session", max_tokens=100000)
 ```
 
 ### Advanced Configuration
@@ -395,36 +408,35 @@ KV-cache states are stored as:
 Storage format:
 ```
 ~/.chunkforge/
-├── chunkforge.db          # SQLite metadata
+├── chunkforge.db          # SQLite metadata + chunk content
 ├── kv_cache/
 │   └── {session_id}/
-│       ├── {chunk_id}_turn0.kv
-│       ├── {chunk_id}_turn1.kv
+│       ├── {chunk_id}_turn0.kv   # JSON + zlib compressed
 │       └── ...
-└── indices/               # Future: vector indices
+└── indices/               # Reserved for persistent indices
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    ChunkForge API                        │
-├─────────────────────────────────────────────────────────┤
-│  index_documents()  │  detect_changes()  │  get_kv()    │
-│  save_kv_state()    │  rollback()        │  prune()     │
-└─────────────────────────────────────────────────────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          │               │               │
-    ┌─────▼─────┐   ┌────▼────┐   ┌──────▼──────┐
-    │ Chunking  │   │ Indexing│   │   Storage   │
-    │  Engine   │   │ Engine  │   │   Backend   │
-    └───────────┘   └─────────┘   └─────────────┘
-          │               │               │
-    ┌─────▼─────┐   ┌────▼────┐   ┌──────▼──────┐
-    │ Semantic  │   │ Hash +  │   │  SQLite +   │
-    │ Merging   │   │ Signature│   │  Filesystem │
-    └───────────┘   └─────────┘   └─────────────┘
+┌──────────────────────────────────────────────────────────┐
+│               ChunkForge Engine (engine.py)               │
+├──────────────────────────────────────────────────────────┤
+│  index_documents()  │  search()    │  get_context()      │
+│  detect_changes()   │  rollback()  │  save/load state    │
+└──────────────────────────────────────────────────────────┘
+          │                  │                   │
+  ┌───────▼──────┐   ┌──────▼──────┐   ┌────────▼────────┐
+  │  Chunkers    │   │ VectorIndex │   │  StorageBackend  │
+  │  text, code  │   │   (HNSW)    │   │  + SessionStore  │
+  │  image, pdf  │   │  index.py   │   │  storage.py      │
+  │  audio,video │   └─────────────┘   └─────────────────┘
+  └──────────────┘                            │
+                                     ┌────────▼────────┐
+  ┌──────────────┐                   │  SQLite + JSON   │
+  │  MCP Servers │                   │  (chunk content  │
+  │  stdio + HTTP│                   │   + metadata)    │
+  └──────────────┘                   └─────────────────┘
 ```
 
 ## Configuration
@@ -469,7 +481,7 @@ Typical token savings with ChunkForge:
 - **Semantic signatures are approximate**: The TF-style features provide good but not perfect semantic similarity
 - **No GPU acceleration**: All operations run on CPU
 - **Single-machine only**: No distributed storage or multi-node support
-- **KV-cache format**: Assumes pickle/msgspec-serializable KV data
+- **KV-cache format**: Assumes JSON-serializable KV data (falls back to msgspec for complex types)
 
 ## Contributing
 

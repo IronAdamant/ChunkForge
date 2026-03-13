@@ -4,21 +4,25 @@
 
 **Chunk** — A semantically coherent unit of content (text, code, image data, etc.) that can be independently indexed, cached, and restored. Typically 256-4096 tokens.
 
-**KV-Cache** — Key-Value cache state from an LLM's attention mechanism. ChunkForge stores these so unchanged chunks don't need to be re-processed.
+**Context Cache** — Pre-computed context state from an LLM. ChunkForge stores these so unchanged chunks don't need to be re-processed. (Previously referred to as "KV-cache" in earlier versions.)
 
 **Semantic Signature** — A 128-dimensional vector representing the semantic content of a chunk. Used for similarity comparison without requiring an LLM. Composed of character trigram frequencies, word distributions, and structural features.
 
 **Content Hash** — SHA-256 hash of a chunk's content. Used for fast exact-match change detection.
 
-**Session** — An independent context for KV-cache management. Each session tracks turns (conversation steps) and can be rolled back.
+**Session** — An independent context for cache management, managed by `SessionManager`. Each session tracks turns (conversation steps) and can be rolled back. Session data is persisted via `session_storage.py` using JSON + zlib.
 
-**Turn** — A single step in a session. KV states are stored per-chunk per-turn, enabling rollback to any previous turn.
+**Turn** — A single step in a session. Context cache states are stored per-chunk per-turn, enabling rollback to any previous turn.
 
 **Modality** — The type of content: `text`, `code`, `image`, `pdf`, `audio`, `video`.
 
+**ChunkForge Engine** — The main `ChunkForge` class in `engine.py` that routes operations through chunkers and the HNSW index. Provides `search()` and `get_context()` APIs.
+
+**MCP (Model Context Protocol)** — JSON-RPC protocol over stdio used by `mcp_stdio.py` to expose ChunkForge operations to LLM agents.
+
 ## Change Detection Tiers
 
-1. **Hash Match** — Content hash unchanged → load cached KV instantly (zero tokens)
+1. **Hash Match** — Content hash unchanged → load cached context instantly (zero tokens)
 2. **Semantic Match** — Hash differs but cosine similarity > 0.85 → lightweight double-check, likely unchanged
 3. **Reprocess** — Significant semantic change → mark chunk for full LLM reprocessing
 
@@ -58,4 +62,4 @@
 | `merge_threshold` | 0.7 | Cosine similarity threshold for merging adjacent chunks |
 | `change_threshold` | 0.85 | Cosine similarity threshold for considering a chunk "unchanged" |
 | `storage_dir` | `~/.chunkforge/` | Base directory for all persistent data |
-| `MCP port` | 9876 | Default MCP server port |
+| `MCP transport` | stdio | MCP server uses JSON-RPC over stdio |

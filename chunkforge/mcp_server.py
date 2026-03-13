@@ -15,10 +15,10 @@ import json
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Any, Callable, Dict, List, Optional
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Callable, Dict, Optional
+from urllib.parse import urlparse
 
-from chunkforge.core import ChunkForge
+from chunkforge.engine import ChunkForge
 from chunkforge.chunkers import (
     HAS_IMAGE_CHUNKER,
     HAS_PDF_CHUNKER,
@@ -217,6 +217,40 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
                     "required": ["session_id", "max_tokens"],
                 },
             },
+            {
+                "name": "search",
+                "description": "Semantic search across indexed chunks. Returns chunk content and metadata ranked by relevance.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query text",
+                        },
+                        "top_k": {
+                            "type": "integer",
+                            "description": "Number of results to return",
+                            "default": 10,
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "get_context",
+                "description": "Get cached context for documents. Returns unchanged chunks with content, flags changed/new documents.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "document_paths": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Document paths to get context for",
+                        },
+                    },
+                    "required": ["document_paths"],
+                },
+            },
         ]
         
         self._send_json_response({"tools": tools})
@@ -274,6 +308,8 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
             "save_kv_state": self.chunkforge.save_kv_state,
             "rollback": self.chunkforge.rollback,
             "prune_chunks": self.chunkforge.prune_chunks,
+            "search": self.chunkforge.search,
+            "get_context": self.chunkforge.get_context,
         }
         
         # Multi-modal tools

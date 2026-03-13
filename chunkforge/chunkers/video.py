@@ -7,7 +7,7 @@ Requires opencv-python for video processing.
 Install: pip install chunkforge[video]
 """
 
-from typing import Any, Dict, List
+from typing import Any, List
 
 from chunkforge.chunkers.base import BaseChunker, Chunk
 

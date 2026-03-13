@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chunkforge"
-version = "0.4.0"
-description = "Purely local, persistent KV-cache rollback and offload engine with dynamic semantic chunking and hybrid vector-database-style indexing"
+version = "0.5.0"
+description = "Local context cache for LLM agents with semantic chunking and vector search"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
     {name = "ChunkForge Contributors"}
 ]
-keywords = ["llm", "kv-cache", "chunking", "indexing", "offline", "local"]
+keywords = ["llm", "context-cache", "chunking", "vector-search", "semantic-search", "offline", "local"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -47,6 +47,9 @@ video = [
     "opencv-python>=4.8.0",
     "numpy>=1.24.0",
 ]
+mcp = [
+    "mcp>=1.0.0",
+]
 all = [
     "msgspec>=0.18.0",
     "numpy>=1.24.0",
@@ -54,6 +57,7 @@ all = [
     "pymupdf>=1.23.0",
     "librosa>=0.10.0",
     "opencv-python>=4.8.0",
+    "mcp>=1.0.0",
 ]
 dev = [
     "pytest>=7.0",
@@ -64,6 +68,7 @@ dev = [
 
 [project.scripts]
 chunkforge = "chunkforge.cli:main"
+chunkforge-mcp = "chunkforge.mcp_stdio:main"
 
 [project.urls]
 Homepage = "https://github.com/chunkforge/chunkforge"

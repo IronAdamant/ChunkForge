@@ -7,11 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Planned for v0.5.0
-- Multi-document sessions
-- Selective KV loading by query
+### Planned
 - Web UI for browsing chunks
 - Plugin system for custom chunkers
+- Persistent HNSW index serialization
+
+## [0.5.1] - 2026-03-13
+
+### Fixed
+- **`detect_changes_and_update` now persists updated chunks** — previously re-chunked content was computed but never stored, leaving stale data in SQLite
+- **`store_chunk` preserves `access_count`** — INSERT OR REPLACE was resetting access_count to 0; now uses UPDATE for existing chunks
+- **`prune_chunks` updates `total_tokens`** — sessions table now reflects actual token count after pruning
+- **Binary semantic signatures padded to 128-dim** — hash-based signatures for binary content were 64-dim, causing dimension mismatch with text signatures
+- **Consistent `results["new"]` types** — `detect_changes_and_update` now always returns dicts (was mixing strings and dicts)
+- **`store_kv_state` consistent compression** — msgspec fallback path now applies zlib compression like the JSON path
+- **`get_session()` hoisted out of per-chunk loop** — was called N times per unchanged document instead of once
+
+### Removed
+- **Pickle fallback** in session_storage.py — removed insecure pickle deserialization; only JSON+zlib and msgspec JSON are supported
+- **Unused imports** across 12 source and test files (~20 imports removed)
+- **All 4 unused conftest.py fixtures** — sample file fixtures that were never referenced by any test
+- **Unused `current_start` variable** in code.py regex chunker
+
+### Changed
+- **Engine delegates session ops to SessionManager** — `save_kv_state`, `rollback`, `prune_chunks`, `get_relevant_kv` now delegate to `SessionManager` instead of duplicating logic
+- **`storage.py` uses `sig_to_bytes()` from numpy_compat** — replaces duplicated numpy/struct conversion code
+- **Raw SQL replaced with StorageBackend API** — `_rebuild_index`, `detect_changes_and_update`, and `mcp_stdio.read_resource` now use proper storage methods
+- **`_extract_words` simplified** — one-liner with Counter comprehension
+- **`_estimate_token_count` collapsed** — merged identical str/bytes branches
+
+### Tests
+- All 88 tests passing, 1 skipped (MCP SDK not installed)
+
+## [0.5.0] - 2026-03-13
+
+### Added
+- **New engine module** (`engine.py`): Main ChunkForge class now routes documents through modality-specific chunkers and wires in the HNSW vector index
+- **Semantic search API** (`search(query, top_k)`): Returns chunk content + metadata ranked by HNSW similarity
+- **Context cache API** (`get_context(document_paths)`): Returns cached chunk content for unchanged files, flags changed/new docs
+- **Real MCP server** (`mcp_stdio.py`): JSON-RPC over stdio, compatible with Claude Desktop and MCP clients
+- **`serve-mcp` CLI command**: Start stdio MCP server
+- **`search` CLI command**: `chunkforge search "query" --top-k 10`
+- **SessionManager** (`session.py`): High-level session operations with HNSW-accelerated retrieval
+- **SessionStorage** (`session_storage.py`): Extracted session operations from storage.py
+- **numpy_compat module** (`chunkers/numpy_compat.py`): Shared numpy fallback + `cosine_similarity()` helper
+- **Chunk content storage**: SQLite `chunks` table now has `content TEXT` column; chunk text retrievable without re-reading files
+- **`get_chunk_content()`** and **`search_chunks()`** methods on StorageBackend
+- **`save_state`/`load_state` aliases** on ChunkForge (clearer naming alongside existing `save_kv_state`)
+- **MCP SDK optional dependency**: `pip install chunkforge[mcp]`
+- **`chunkforge-mcp` entry point**: Direct entry point for MCP stdio server
+- **4 new test files**: `test_engine.py`, `test_session.py`, `test_mcp_stdio.py`, `test_storage_migration.py`
+
+### Changed
+- **Chunker routing in engine**: `index_documents()` now routes through CodeChunker for `.py`/`.js` etc., TextChunker for `.txt`/`.md`, instead of reimplementing paragraph splitting inline
+- **HNSW index wired in**: Vector index populated on startup from SQLite, used for `search()`, `get_relevant_kv()`, and change detection
+- **Unified Chunk class**: Single `Chunk` from `chunkers.base` with rich 128-dim semantic signatures (trigrams, word frequencies, structural features) — replaces the two incompatible Chunk classes
+- **core.py is now a shim**: Re-exports `ChunkForge` from `engine` and `Chunk` from `chunkers.base` for backward compat
+- **JSON replaces pickle**: Session storage uses `json.dumps()` + `zlib.compress()` instead of pickle (security improvement for agent-facing tools)
+- **Storage migration**: `_migrate_database()` adds `content` column via `ALTER TABLE ADD COLUMN` (preserves existing data)
+- **Terminology**: Docstrings and module descriptions reframed as "context cache" not "KV-cache tensors"
+- **Version**: 0.4.1 -> 0.5.0
+- **Description**: "Local context cache for LLM agents with semantic chunking and vector search"
+- **Keywords**: `kv-cache` -> `context-cache`, `vector-search`, `semantic-search`
+- **HTTP MCP server**: Added `search` and `get_context` tools to HTTP API
+- **CLI stats**: Now shows vector index statistics
+
+### Security
+- **Pickle removed**: KV-cache serialization uses JSON+zlib. Legacy pickle files still loadable during migration via restricted unpickler.
+
+### Tests
+- **88 tests passing** (was 49), 1 skipped (MCP SDK not installed)
+- New test coverage: engine routing, HNSW integration, search API, content storage, schema migration, JSON serialization, session manager
 
 ## [0.4.1] - 2026-03-13
 
@@ -180,6 +246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.5.1 | 2026-03-13 | Codebase audit: bug fixes, dead code removal, deduplication, engine delegates to SessionManager |
+| 0.5.0 | 2026-03-13 | Context cache overhaul: unified chunks, HNSW wired in, search API, real MCP, JSON storage |
 | 0.4.1 | 2026-03-13 | Bug fixes, dead code removal, code simplification |
 | 0.4.0 | 2026-03-12 | Vector index, compression, adaptive chunking |
 | 0.3.0 | 2026-03-12 | Multi-modal support |

@@ -1,33 +1,36 @@
 """
-ChunkForge - Purely local, persistent KV-cache rollback and offload engine
-with dynamic semantic chunking and hybrid vector-database-style indexing.
+ChunkForge — Local context cache for LLM agents with semantic chunking
+and vector search.
 
-This library enables long-horizon agents (especially 1M+ context models) to
-avoid ever re-scanning or re-processing unmodified documents or code. Unchanged
-chunks instantly restore pre-computed KV states; only modified chunks trigger
-a lightweight double-check.
+Smart context cache that avoids re-reading unchanged files by caching
+chunk data with semantic search. Routes documents through modality-specific
+chunkers, stores chunk content with HNSW vector indexing, and provides
+fast retrieval via semantic search.
 
 Key Features:
-- Dynamic semantic chunking with intelligent merging
-- Hybrid indexing with SHA-256 hashes + semantic signatures
-- Persistent KV-cache storage with full rollback support
-- Disk offloading and automatic pruning
-- Built-in local MCP server for agent integration
+- Dynamic semantic chunking with modality-specific chunkers
+- HNSW vector index for O(log n) similarity search
+- Chunk content persistence for instant retrieval
+- Change detection with hash + semantic comparison
+- Session management with rollback support
+- Built-in MCP server for agent integration
 
 All operations are 100% offline and local-only. No internet access required.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __author__ = "ChunkForge Contributors"
 __license__ = "MIT"
 
-from chunkforge.core import ChunkForge
+from chunkforge.engine import ChunkForge
 from chunkforge.storage import StorageBackend
+from chunkforge.session import SessionManager
 from chunkforge.mcp_server import MCPServer
 
 __all__ = [
     "ChunkForge",
     "StorageBackend",
+    "SessionManager",
     "MCPServer",
     "__version__",
 ]

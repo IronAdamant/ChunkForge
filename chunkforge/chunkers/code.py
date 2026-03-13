@@ -7,7 +7,7 @@ for Python and regex patterns for other languages. Zero dependencies.
 
 import ast
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from chunkforge.chunkers.base import BaseChunker, Chunk
 
@@ -248,7 +248,6 @@ class CodeChunker(BaseChunker):
             return self._chunk_by_lines(content, document_path, language)
         
         # Create chunks from matches
-        current_start = 0
         last_end = 0
         
         for i, match in enumerate(matches):

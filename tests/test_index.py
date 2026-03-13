@@ -1,7 +1,6 @@
 """Tests for ChunkForge vector index."""
 
 import pytest
-import math
 from chunkforge.index import HNSWIndex, VectorIndex
 
 

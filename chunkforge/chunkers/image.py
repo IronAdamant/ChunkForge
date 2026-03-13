@@ -7,9 +7,8 @@ Requires Pillow (PIL) for image processing.
 Install: pip install chunkforge[image]
 """
 
-import hashlib
 import io
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from chunkforge.chunkers.base import BaseChunker, Chunk
 
