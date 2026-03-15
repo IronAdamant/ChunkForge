@@ -17,6 +17,7 @@ from chunkforge.index import VectorIndex
 
 
 INDEX_FILENAME = "hnsw_index.json.zlib"
+BM25_FILENAME = "bm25_index.json.zlib"
 FORMAT_VERSION = 1
 
 
@@ -93,5 +94,53 @@ def load_if_fresh(
         return None
     try:
         return VectorIndex.from_dict(data)
+    except (KeyError, TypeError):
+        return None
+
+
+# --- BM25 persistence (same pattern as HNSW) ---
+
+
+def save_bm25(bm25_index: Any, chunk_ids_hash: str, index_dir: Path) -> None:
+    """Serialize a BM25Index to a compressed JSON file."""
+    data = bm25_index.to_dict()
+    data["_chunk_ids_hash"] = chunk_ids_hash
+
+    json_bytes = json.dumps(data, separators=(",", ":")).encode("utf-8")
+    compressed = zlib.compress(json_bytes)
+
+    index_dir.mkdir(parents=True, exist_ok=True)
+    target = index_dir / BM25_FILENAME
+
+    fd, tmp_path = tempfile.mkstemp(dir=str(index_dir), suffix=".tmp")
+    try:
+        with open(fd, "wb") as f:
+            f.write(compressed)
+        Path(tmp_path).replace(target)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
+
+
+def load_bm25_if_fresh(index_dir: Path, current_hash: str) -> Optional[Any]:
+    """Load persisted BM25 index if it matches the current chunk state."""
+    path = index_dir / BM25_FILENAME
+    if not path.exists():
+        return None
+
+    try:
+        compressed = path.read_bytes()
+        json_bytes = zlib.decompress(compressed)
+        data = json.loads(json_bytes)
+    except (zlib.error, json.JSONDecodeError):
+        return None
+
+    if data.get("_chunk_ids_hash") != current_hash:
+        return None
+
+    try:
+        from chunkforge.bm25 import BM25Index
+
+        return BM25Index.from_dict(data)
     except (KeyError, TypeError):
         return None

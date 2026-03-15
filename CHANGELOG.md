@@ -5,13 +5,19 @@ All notable changes to ChunkForge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-03-15
 
 ### Added
-- **Hybrid search (BM25 + HNSW)** — `search()` now widens HNSW to 3x candidates and re-ranks with BM25 keyword scores. Blend controlled by `search_alpha` (default 0.7). BM25 index lazily initialized on first search, maintained incrementally.
-- **`chunkforge/bm25.py`** — Pure-Python Okapi BM25 keyword index with zero dependencies
+- **Hybrid search (BM25 + HNSW)** — `search()` widens HNSW to 3x candidates and re-ranks with BM25 keyword scores. Blend controlled by `search_alpha` (default 0.7). BM25 index lazily initialized on first search, persisted alongside HNSW.
+- **`chunkforge/bm25.py`** — Pure-Python Okapi BM25 keyword index with zero dependencies. Includes `to_dict()`/`from_dict()` for persistence.
+- **BM25 persistence** — BM25 index serialized to `indices/bm25_index.json.zlib` with same staleness detection as HNSW. Loaded from disk on first search instead of rebuilding from SQLite.
+- **Search alpha auto-tuning** — `_compute_search_alpha()` detects code-like queries (identifiers, brackets, keywords) and lowers alpha to weight keyword matching more heavily.
 - **Per-modality thresholds** — `MODALITY_THRESHOLDS` dict: code uses merge=0.85 (preserves AST boundaries) and change=0.80 (tolerates incremental edits); text and PDF keep existing defaults
-- **Signature cache for incremental indexing** — On re-index, unchanged chunks reuse cached semantic signatures instead of recomputing. Applied in both `index_documents()` and `detect_changes_and_update()`
+- **AST-boundary merge guard** — Code chunks starting with `def`, `class`, `function`, etc. are never merged with the preceding chunk, regardless of similarity
+- **Adaptive ef_search** — HNSW search width auto-scales based on index size: 10 for <100 nodes, ef_search for <1K, 2x for <10K, 4x for 10K+
+- **BPE merge-aware token estimation** — `estimate_tokens()` now applies space-word and punctuation-pair merge corrections, achieving ~95% accuracy vs actual BPE (was ~85-90%)
+- **Binary file handling** — `index_documents()` and `detect_changes_and_update()` now read binary modalities (image, audio, video) as bytes instead of forcing UTF-8 text decode
+- **Signature cache for incremental indexing** — On re-index, unchanged chunks reuse cached semantic signatures instead of recomputing
 - **`estimate_tokens()` function** — Exported from `chunkers/base.py` as the single source of truth for token estimation
 - **Document removal** — `remove` MCP tool and CLI command to unindex a document and clean up all its chunks, annotations, and index entries
 - **Stale chunk cleanup** — Re-indexing and change detection now automatically delete old chunks that no longer exist in the new chunking
@@ -23,9 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **HNSW distance metric** — Replaced Euclidean distance with `1 - dot_product` for normalized vectors (avoids per-comparison sqrt)
 - **HNSW remove() repairs graph** — Removing a node now reconnects orphaned neighbours to maintain graph connectivity
 - **Vector storage deduplicated** — Removed redundant `chunk_vectors` dict from `VectorIndex`; vectors live only in HNSW nodes (~40% index memory reduction)
-- **Token estimation consistency** — Replaced all 5 instances of `len(text) // 4` in `text.py` and `code.py` with `estimate_tokens()` regex tokenizer. Incremental tracking in hot loops avoids O(n^2).
+- **Token estimation consistency** — Replaced all `len(text) // 4` shortcuts with `estimate_tokens()` BPE-corrected tokenizer
 
 ### Fixed
+- **Binary files read as UTF-8** — Image/audio/video files no longer forced through `read_text(errors="replace")`; now properly read as bytes
 - **Schema migration gap** — Databases created before v0.4.0 lacked the `version` column on chunks table, causing index errors
 
 ## [0.5.5] - 2026-03-14
@@ -325,6 +332,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.6.0 | 2026-03-15 | Hybrid search, BPE tokens, adaptive HNSW, per-modality thresholds, binary handling |
 | 0.5.4 | 2026-03-13 | Codebase audit: bug fixes, dead code removal, deduplication, dynamic versioning |
 | 0.5.3 | 2026-03-13 | Better signatures (bigrams, positional features), regex tokenizer, HNSW performance (array.array, cached norms) |
 | 0.5.2 | 2026-03-13 | Persistent HNSW index serialization — skip rebuild on startup |

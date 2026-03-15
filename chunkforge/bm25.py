@@ -98,3 +98,30 @@ class BM25Index:
             self.avg_dl = sum(self.doc_lengths.values()) / self.n_docs
         else:
             self.avg_dl = 0.0
+
+    def to_dict(self) -> Dict:
+        """Serialize to a plain dict for persistence."""
+        return {
+            "k1": self.k1,
+            "b": self.b,
+            "doc_freqs": dict(self.doc_freqs),
+            "doc_lengths": self.doc_lengths,
+            "term_freqs": {
+                doc_id: dict(tf) for doc_id, tf in self.term_freqs.items()
+            },
+            "avg_dl": self.avg_dl,
+            "n_docs": self.n_docs,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "BM25Index":
+        """Reconstruct from serialized dict."""
+        idx = cls(k1=data["k1"], b=data["b"])
+        idx.doc_freqs = Counter(data["doc_freqs"])
+        idx.doc_lengths = data["doc_lengths"]
+        idx.term_freqs = {
+            doc_id: Counter(tf) for doc_id, tf in data["term_freqs"].items()
+        }
+        idx.avg_dl = data["avg_dl"]
+        idx.n_docs = data["n_docs"]
+        return idx

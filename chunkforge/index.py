@@ -87,6 +87,17 @@ class HNSWIndex:
         # Statistics
         self._insert_count: int = 0
 
+    def _adaptive_ef(self, k: int) -> int:
+        """Scale ef_search based on index size and requested k."""
+        n = len(self.nodes)
+        if n < 100:
+            return max(k, 10)
+        if n < 1000:
+            return max(k, self.ef_search)
+        if n < 10000:
+            return max(k, self.ef_search * 2)
+        return max(k, self.ef_search * 4)
+
     def _random_level(self) -> int:
         """Generate random level for new node."""
         level = 0
@@ -338,7 +349,7 @@ class HNSWIndex:
             return []
 
         if ef is None:
-            ef = self.ef_search
+            ef = self._adaptive_ef(k)
 
         # Start from entry point
         if self.entry_point is None:

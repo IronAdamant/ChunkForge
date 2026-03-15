@@ -297,9 +297,9 @@ class TestChunk:
         )
 
         assert chunk.token_count > 0
-        # Regex tokenizer splits into words, punctuation, spaces
-        # "This is a test sentence with multiple words." -> ~16 tokens
-        assert 10 <= chunk.token_count <= 20
+        # BPE-corrected tokenizer: merges leading spaces with words
+        # "This is a test sentence with multiple words." -> ~9 tokens
+        assert 5 <= chunk.token_count <= 15
 
     def test_similarity(self):
         """Test similarity computation."""

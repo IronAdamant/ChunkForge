@@ -3,6 +3,7 @@ ChunkForge engine — smart context cache with semantic chunking and vector sear
 """
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +26,8 @@ from chunkforge.index_store import (
     compute_chunk_ids_hash,
     load_if_fresh,
     save_index,
+    save_bm25,
+    load_bm25_if_fresh,
 )
 from chunkforge.session import SessionManager
 from chunkforge.storage import StorageBackend
@@ -128,17 +131,54 @@ class ChunkForge:
         save_index(self.vector_index, current_hash, self.storage.index_dir)
 
     def _ensure_bm25(self) -> None:
-        """Lazily initialize BM25 index from stored chunk content."""
+        """Lazily initialize BM25 index — load from disk or rebuild."""
         if self._bm25_ready:
             return
         from chunkforge.bm25 import BM25Index
 
+        # Try loading persisted BM25 index
+        current_hash = compute_chunk_ids_hash(self.storage)
+        loaded = load_bm25_if_fresh(self.storage.index_dir, current_hash)
+        if loaded is not None:
+            self.bm25_index = loaded
+            self._bm25_ready = True
+            return
+
+        # Rebuild from SQLite
         self.bm25_index = BM25Index()
         for chunk in self.storage.search_chunks():
             content = chunk.get("content")
             if content:
                 self.bm25_index.add_document(chunk["chunk_id"], content)
         self._bm25_ready = True
+        save_bm25(self.bm25_index, current_hash, self.storage.index_dir)
+
+    def _save_bm25(self) -> None:
+        """Persist BM25 index alongside HNSW."""
+        if self._bm25_ready and self.bm25_index is not None:
+            current_hash = compute_chunk_ids_hash(self.storage)
+            save_bm25(self.bm25_index, current_hash, self.storage.index_dir)
+
+    def _compute_search_alpha(self, query: str) -> float:
+        """Auto-tune blend weight based on query characteristics.
+
+        Code-like queries (identifiers, brackets, keywords) get lower
+        alpha to weight keyword matching more heavily.
+        """
+        signals = sum([
+            "_" in query,
+            bool(re.search(r"[A-Z][a-z]+[A-Z]", query)),
+            any(c in query for c in "{}[]();"),
+            bool(re.search(
+                r"\b(def|class|function|import|const|let|var|fn|pub)\b", query
+            )),
+            "." in query and not query.endswith("."),
+        ])
+        if signals >= 3:
+            return max(0.3, self.search_alpha - 0.3)
+        if signals >= 1:
+            return max(0.4, self.search_alpha - 0.15)
+        return self.search_alpha
 
     def _persist_chunks(
         self, chunks: List[Chunk], doc_path: str
@@ -215,8 +255,18 @@ class ChunkForge:
                 continue
 
             try:
-                content = path.read_text(encoding="utf-8", errors="replace")
-                content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                # Read as bytes for binary modalities, text otherwise
+                modality = self.detect_modality(str(path))
+                binary = modality in ("image", "audio", "video")
+                if binary:
+                    raw = path.read_bytes()
+                    content_hash = hashlib.sha256(raw).hexdigest()
+                    content: Any = raw
+                else:
+                    content = path.read_text(encoding="utf-8", errors="replace")
+                    content_hash = hashlib.sha256(
+                        content.encode("utf-8")
+                    ).hexdigest()
 
                 existing_doc = self.storage.get_document(str(path))
                 if existing_doc and not force_reindex:
@@ -241,8 +291,7 @@ class ChunkForge:
                     for c in old_chunks_meta
                 }
 
-                # Route through appropriate chunker
-                modality = self.detect_modality(str(path))
+                # Route through appropriate chunker (modality detected above)
                 chunker = self.chunkers.get(modality, self.chunkers["text"])
                 chunks = chunker.chunk(content, str(path))
 
@@ -289,6 +338,7 @@ class ChunkForge:
 
         if results["indexed"]:
             self._save_index()
+            self._save_bm25()
 
         return results
 
@@ -299,6 +349,7 @@ class ChunkForge:
             for chunk_id in result.get("chunk_ids", []):
                 self.vector_index.remove_chunk(chunk_id)
             self._save_index()
+            self._save_bm25()
         return result
 
     def _merge_similar_chunks(self, chunks: List[Chunk]) -> List[Chunk]:
@@ -316,9 +367,24 @@ class ChunkForge:
             "merge", self.merge_threshold
         )
 
+        # Keywords that signal a new definition boundary in code
+        _DEF_STARTS = (
+            "def ", "class ", "function ", "func ", "fn ", "pub fn ",
+            "async def ", "async function ", "export function ",
+            "export class ", "export default ",
+        )
+
         merged = [chunks[0]]
         for chunk in chunks[1:]:
             current = merged[-1]
+
+            # Never merge across function/class boundaries in code
+            if modality == "code" and isinstance(chunk.content, str):
+                leading = chunk.content.lstrip()
+                if any(leading.startswith(kw) for kw in _DEF_STARTS):
+                    merged.append(chunk)
+                    continue
+
             similarity = current.similarity(chunk)
             combined_tokens = current.token_count + chunk.token_count
 
@@ -498,12 +564,19 @@ class ChunkForge:
                 continue
 
             try:
-                content = path.read_text(encoding="utf-8", errors="replace")
+                det_modality = self.detect_modality(doc_path)
+                if det_modality in ("image", "audio", "video"):
+                    raw = path.read_bytes()
+                    current_hash = hashlib.sha256(raw).hexdigest()
+                    content: Any = raw
+                else:
+                    content = path.read_text(encoding="utf-8", errors="replace")
+                    current_hash = hashlib.sha256(
+                        content.encode("utf-8")
+                    ).hexdigest()
             except Exception:
                 results["modified"].append({"path": doc_path, "reason": "Read error"})
                 continue
-
-            current_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
             stored_doc = self.storage.get_document(doc_path)
 
             if stored_doc is None:
@@ -606,6 +679,7 @@ class ChunkForge:
 
         if results["modified"]:
             self._save_index()
+            self._save_bm25()
 
         self.storage.record_change(
             summary=results, session_id=session_id, reason=reason
@@ -654,7 +728,7 @@ class ChunkForge:
             bm25_norm = bm25_scores
 
         # Blend: alpha * vector + (1 - alpha) * keyword
-        alpha = self.search_alpha
+        alpha = self._compute_search_alpha(query)
         combined = {}
         for cid in candidate_ids:
             vec_score = hnsw_scores.get(cid, 0.0)
