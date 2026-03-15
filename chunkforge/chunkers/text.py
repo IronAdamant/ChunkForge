@@ -194,9 +194,18 @@ class TextChunker(BaseChunker):
         chunk_index = 0
 
         # Build chunks with sliding window
+        # Pre-compute sentence start positions for accurate tracking
+        sentence_positions = []
+        search_from = 0
+        for s in sentences:
+            pos = content.find(s, search_from)
+            sentence_positions.append(pos if pos >= 0 else search_from)
+            search_from = sentence_positions[-1] + len(s)
+
         i = 0
         while i < len(sentences):
             # Collect sentences for this chunk
+            chunk_start_idx = i
             chunk_sentences = []
             token_count = 0
 
@@ -214,9 +223,9 @@ class TextChunker(BaseChunker):
             if not chunk_sentences:
                 break
 
-            # Create chunk
+            # Create chunk with accurate position from pre-computed offsets
             chunk_content = " ".join(chunk_sentences)
-            start_pos = content.find(chunk_sentences[0])
+            start_pos = sentence_positions[chunk_start_idx]
             end_pos = start_pos + len(chunk_content)
 
             chunk = Chunk(

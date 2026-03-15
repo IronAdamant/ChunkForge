@@ -104,6 +104,7 @@ def load_if_fresh(
 def save_bm25(bm25_index: Any, chunk_ids_hash: str, index_dir: Path) -> None:
     """Serialize a BM25Index to a compressed JSON file."""
     data = bm25_index.to_dict()
+    data["_version"] = FORMAT_VERSION
     data["_chunk_ids_hash"] = chunk_ids_hash
 
     json_bytes = json.dumps(data, separators=(",", ":")).encode("utf-8")
@@ -135,6 +136,8 @@ def load_bm25_if_fresh(index_dir: Path, current_hash: str) -> Optional[Any]:
     except (zlib.error, json.JSONDecodeError):
         return None
 
+    if data.get("_version") != FORMAT_VERSION:
+        return None
     if data.get("_chunk_ids_hash") != current_hash:
         return None
 

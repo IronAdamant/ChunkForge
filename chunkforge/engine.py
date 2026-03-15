@@ -348,6 +348,8 @@ class ChunkForge:
         if result.get("removed"):
             for chunk_id in result.get("chunk_ids", []):
                 self.vector_index.remove_chunk(chunk_id)
+                if self._bm25_ready:
+                    self.bm25_index.remove_document(chunk_id)
             self._save_index()
             self._save_bm25()
         return result
