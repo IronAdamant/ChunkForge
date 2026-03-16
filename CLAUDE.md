@@ -19,7 +19,7 @@ ChunkForge (engine.py) -- main orchestrator
 
 APIs:
   |-- CLI (cli.py + cli_metadata.py)
-  |-- HTTP REST (mcp_server.py, 15 tools)
+  |-- HTTP REST (mcp_server.py, 15 tools, dynamic discovery from _TOOL_SCHEMAS)
   \-- MCP stdio (mcp_stdio.py, 23 tools, JSON-RPC for Claude Desktop)
 
 Backward compat: core.py re-exports ChunkForge + Chunk
@@ -68,7 +68,7 @@ Backward compat: core.py re-exports ChunkForge + Chunk
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 225 tests (224 pass, 1 skipped without mcp SDK)
+pytest                    # 244 tests (243 pass, 1 skipped without mcp SDK)
 mypy chunkforge/
 ruff check chunkforge/
 ```

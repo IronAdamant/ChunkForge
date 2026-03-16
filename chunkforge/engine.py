@@ -298,6 +298,50 @@ class ChunkForge:
                 expanded.append(path_str)
         return expanded
 
+    def _chunk_and_store(
+        self, path: Path, content: Any, content_hash: str, modality: str,
+    ) -> list:
+        """Chunk a single file, persist chunks, extract symbols, return Chunk list."""
+        doc_path = str(path)
+        existing_doc = self.storage.get_document(doc_path)
+
+        # Build signature cache from old chunks (skip recomputation)
+        old_chunks_meta = []
+        if existing_doc:
+            old_chunks_meta = self.storage.get_document_chunks(doc_path)
+        sig_cache = {
+            c["content_hash"]: c["semantic_signature"] for c in old_chunks_meta
+        }
+
+        # Route through appropriate chunker
+        chunker = self.chunkers.get(modality, self.chunkers["text"])
+        chunks = chunker.chunk(content, doc_path)
+
+        # Inject cached signatures for unchanged chunks
+        for chunk in chunks:
+            cached_sig = sig_cache.get(chunk.content_hash)
+            if cached_sig is not None:
+                chunk._semantic_signature = sig_from_bytes(cached_sig)
+
+        chunks = self._merge_similar_chunks(chunks)
+
+        # Clean up stale chunks from previous indexing
+        if old_chunks_meta:
+            old_ids = {c["chunk_id"] for c in old_chunks_meta}
+            new_ids = {c.chunk_id for c in chunks}
+            self._remove_stale_chunks(old_ids, new_ids)
+
+        self._persist_chunks(chunks, doc_path)
+        self._extract_document_symbols(doc_path, chunks)
+
+        self.storage.store_document(
+            document_path=doc_path,
+            content_hash=content_hash,
+            chunk_count=len(chunks),
+            last_modified=path.stat().st_mtime,
+        )
+        return chunks
+
     def index_documents(
         self,
         paths: List[str],
@@ -331,7 +375,6 @@ class ChunkForge:
                 continue
 
             try:
-                # Read file and compute hash
                 modality = self.detect_modality(str(path))
                 content: Any
                 content, content_hash = _read_and_hash(path, modality)
@@ -348,49 +391,7 @@ class ChunkForge:
                         )
                         continue
 
-                # Build signature cache from old chunks (skip recomputation)
-                old_chunks_meta = []
-                if existing_doc:
-                    old_chunks_meta = self.storage.get_document_chunks(
-                        str(path)
-                    )
-                sig_cache = {
-                    c["content_hash"]: c["semantic_signature"]
-                    for c in old_chunks_meta
-                }
-
-                # Route through appropriate chunker (modality detected above)
-                chunker = self.chunkers.get(modality, self.chunkers["text"])
-                chunks = chunker.chunk(content, str(path))
-
-                # Inject cached signatures for unchanged chunks
-                for chunk in chunks:
-                    cached_sig = sig_cache.get(chunk.content_hash)
-                    if cached_sig is not None:
-                        chunk._semantic_signature = sig_from_bytes(cached_sig)
-
-                # Post-process: merge similar adjacent chunks
-                chunks = self._merge_similar_chunks(chunks)
-
-                # Clean up stale chunks from previous indexing
-                if old_chunks_meta:
-                    old_ids = {c["chunk_id"] for c in old_chunks_meta}
-                    new_ids = {c.chunk_id for c in chunks}
-                    self._remove_stale_chunks(old_ids, new_ids)
-
-                # Store chunks with content
-                self._persist_chunks(chunks, str(path))
-
-                # Extract symbols for cross-file linking
-                self._extract_document_symbols(str(path), chunks)
-
-                last_modified = path.stat().st_mtime
-                self.storage.store_document(
-                    document_path=str(path),
-                    content_hash=content_hash,
-                    chunk_count=len(chunks),
-                    last_modified=last_modified,
-                )
+                chunks = self._chunk_and_store(path, content, content_hash, modality)
 
                 total_tokens = sum(c.token_count for c in chunks)
                 results["indexed"].append(
@@ -609,6 +610,49 @@ class ChunkForge:
         """Get change history entries."""
         return self.storage.get_change_history(limit, document_path)
 
+    def _classify_chunks_for_change(
+        self, new_chunks: list, old_chunks_meta: list,
+        modality: str, doc_path: str, results: Dict[str, Any],
+    ) -> None:
+        """Compare new chunks against old metadata; update results counters."""
+        change_thresh = self.MODALITY_THRESHOLDS.get(
+            modality, {}
+        ).get("change", self.change_threshold)
+
+        old_by_pos: Dict = {}
+        for meta in old_chunks_meta:
+            old_by_pos[(meta["start_pos"], meta["end_pos"])] = meta
+
+        for new_chunk in new_chunks:
+            old_meta = old_by_pos.get((new_chunk.start_pos, new_chunk.end_pos))
+
+            if old_meta is None:
+                search_results = self.vector_index.search(
+                    sig_to_list(new_chunk.semantic_signature), k=1
+                )
+                if search_results and search_results[0][1] >= change_thresh:
+                    results["kv_restored"] += 1
+                else:
+                    results["new"].append(
+                        {
+                            "path": doc_path,
+                            "chunk_id": new_chunk.chunk_id,
+                            "reason": "New chunk",
+                        }
+                    )
+                    results["kv_reprocessed"] += 1
+            elif new_chunk.content_hash == old_meta["content_hash"]:
+                results["kv_restored"] += 1
+            else:
+                old_sig = sig_from_bytes(old_meta["semantic_signature"])
+                similarity = cosine_similarity(
+                    old_sig, new_chunk.semantic_signature
+                )
+                if similarity >= change_thresh:
+                    results["kv_restored"] += 1
+                else:
+                    results["kv_reprocessed"] += 1
+
     def detect_changes_and_update(
         self,
         session_id: str,
@@ -648,8 +692,8 @@ class ChunkForge:
             except Exception:
                 results["modified"].append({"path": doc_path, "reason": "Read error"})
                 continue
-            stored_doc = self.storage.get_document(doc_path)
 
+            stored_doc = self.storage.get_document(doc_path)
             if stored_doc is None:
                 results["new"].append({"path": doc_path, "reason": "Not indexed"})
                 continue
@@ -674,15 +718,10 @@ class ChunkForge:
                         "new_hash": content_hash[:16],
                     }
                 )
-
-                chunker = self.chunkers.get(modality, self.chunkers["text"])
-                change_thresh = self.MODALITY_THRESHOLDS.get(
-                    modality, {}
-                ).get("change", self.change_threshold)
-
                 old_chunks_meta = self.storage.get_document_chunks(doc_path)
 
-                # Inject cached signatures for unchanged chunks
+                # Re-chunk, inject cached sigs, merge, classify
+                chunker = self.chunkers.get(modality, self.chunkers["text"])
                 sig_cache = {
                     c["content_hash"]: c["semantic_signature"]
                     for c in old_chunks_meta
@@ -694,43 +733,9 @@ class ChunkForge:
                         nc._semantic_signature = sig_from_bytes(cached)
                 new_chunks = self._merge_similar_chunks(new_chunks)
 
-                old_by_pos: Dict = {}
-                for meta in old_chunks_meta:
-                    old_by_pos[(meta["start_pos"], meta["end_pos"])] = meta
-
-                for new_chunk in new_chunks:
-                    old_meta = old_by_pos.get((new_chunk.start_pos, new_chunk.end_pos))
-
-                    if old_meta is None:
-                        search_results = self.vector_index.search(
-                            sig_to_list(new_chunk.semantic_signature), k=1
-                        )
-                        if (
-                            search_results
-                            and search_results[0][1] >= change_thresh
-                        ):
-                            results["kv_restored"] += 1
-                        else:
-                            results["new"].append(
-                                {
-                                    "path": doc_path,
-                                    "chunk_id": new_chunk.chunk_id,
-                                    "reason": "New chunk",
-                                }
-                            )
-                            results["kv_reprocessed"] += 1
-                    elif new_chunk.content_hash == old_meta["content_hash"]:
-                        results["kv_restored"] += 1
-                    else:
-                        old_sig = sig_from_bytes(old_meta["semantic_signature"])
-                        similarity = cosine_similarity(
-                            old_sig, new_chunk.semantic_signature
-                        )
-
-                        if similarity >= change_thresh:
-                            results["kv_restored"] += 1
-                        else:
-                            results["kv_reprocessed"] += 1
+                self._classify_chunks_for_change(
+                    new_chunks, old_chunks_meta, modality, doc_path, results
+                )
 
                 # Persist updated chunks and clean up stale ones
                 self._persist_chunks(new_chunks, doc_path)
@@ -739,7 +744,6 @@ class ChunkForge:
                 new_chunk_ids = {c.chunk_id for c in new_chunks}
                 self._remove_stale_chunks(old_chunk_ids, new_chunk_ids)
 
-                # Update document record
                 self.storage.store_document(
                     document_path=doc_path,
                     content_hash=content_hash,
