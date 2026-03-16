@@ -232,12 +232,54 @@ class ChunkForge:
             return "text"
         return "unknown"
 
+    def _expand_paths(self, paths: List[str]) -> List[str]:
+        """Expand directories and globs into individual file paths.
+
+        Directories are walked recursively; only files with supported
+        extensions are included.  Hidden directories (starting with '.')
+        and common non-source directories are skipped.
+        """
+        _SKIP_DIRS = {
+            ".git", ".hg", ".svn", "__pycache__", "node_modules",
+            ".venv", "venv", ".tox", ".eggs", "dist", "build",
+            ".mypy_cache", ".pytest_cache", ".ruff_cache",
+        }
+
+        supported: set = set()
+        for chunker in self.chunkers.values():
+            supported.update(chunker.supported_extensions())
+
+        expanded: List[str] = []
+        for path_str in paths:
+            p = Path(path_str)
+            if p.is_file():
+                expanded.append(str(p))
+            elif p.is_dir():
+                for child in sorted(p.rglob("*")):
+                    if any(part in _SKIP_DIRS for part in child.parts):
+                        continue
+                    if any(part.startswith(".") for part in child.relative_to(p).parts):
+                        continue
+                    if child.is_file() and child.suffix.lower() in supported:
+                        expanded.append(str(child))
+            else:
+                expanded.append(path_str)
+        return expanded
+
     def index_documents(
         self,
         paths: List[str],
         force_reindex: bool = False,
     ) -> Dict[str, Any]:
-        """Index documents through modality-specific chunkers."""
+        """Index documents through modality-specific chunkers.
+
+        Accepts file paths AND directory paths.  Directories are walked
+        recursively; only files with supported extensions are indexed.
+        Hidden dirs and common non-source dirs (.git, node_modules, etc.)
+        are automatically skipped.
+        """
+        paths = self._expand_paths(paths)
+
         results: Dict[str, Any] = {
             "indexed": [],
             "skipped": [],
@@ -673,6 +715,7 @@ class ChunkForge:
 
                 # Persist updated chunks and clean up stale ones
                 self._persist_chunks(new_chunks, doc_path)
+                self._extract_document_symbols(doc_path, new_chunks)
                 old_chunk_ids = {m["chunk_id"] for m in old_chunks_meta}
                 new_chunk_ids = {c.chunk_id for c in new_chunks}
                 self._remove_stale_chunks(old_chunk_ids, new_chunk_ids)
@@ -688,6 +731,15 @@ class ChunkForge:
         if results["modified"]:
             self._save_index()
             self._save_bm25()
+            self._rebuild_edges()
+            # Propagate staleness to dependents of modified chunks
+            modified_chunk_ids = set()
+            for doc_info in results["modified"]:
+                if isinstance(doc_info, dict) and "path" in doc_info:
+                    for c in self.storage.get_document_chunks(doc_info["path"]):
+                        modified_chunk_ids.add(c["chunk_id"])
+            if modified_chunk_ids:
+                self._propagate_staleness(modified_chunk_ids)
 
         self.storage.record_change(
             summary=results, session_id=session_id, reason=reason
@@ -897,6 +949,88 @@ class ChunkForge:
         edges = resolve_symbols(all_syms)
         self.storage.clear_all_edges()
         self.storage.store_edges(edges)
+
+    def _propagate_staleness(
+        self,
+        changed_chunk_ids: set,
+        decay: float = 0.8,
+        max_depth: int = 3,
+    ) -> int:
+        """Propagate staleness scores through the symbol graph.
+
+        When chunks change, their dependents (chunks that reference them)
+        become potentially stale.  Score decays by `decay` per hop:
+        depth 1 = decay, depth 2 = decay^2, etc.
+
+        Changed chunks themselves get score 0 (they are already fresh).
+        Returns the number of chunks marked stale.
+        """
+        # Reset staleness on changed chunks (they're freshly indexed)
+        self.storage.set_staleness_batch(
+            [(0.0, cid) for cid in changed_chunk_ids]
+        )
+
+        # BFS from changed chunks outward through dependents
+        visited: Dict[str, float] = {}
+        queue = [(cid, 0) for cid in changed_chunk_ids]
+
+        while queue:
+            current_id, depth = queue.pop(0)
+            if depth > max_depth:
+                continue
+
+            edges = self.storage.get_incoming_edges(current_id)
+            for edge in edges:
+                dep_id = edge["source_chunk_id"]
+                if dep_id in changed_chunk_ids:
+                    continue
+                new_score = decay ** (depth + 1)
+                # Keep highest staleness if reached via multiple paths
+                if dep_id not in visited or new_score > visited[dep_id]:
+                    visited[dep_id] = new_score
+                    queue.append((dep_id, depth + 1))
+
+        if visited:
+            self.storage.set_staleness_batch(
+                [(score, cid) for cid, score in visited.items()]
+            )
+
+        return len(visited)
+
+    def stale_chunks(self, threshold: float = 0.3) -> Dict[str, Any]:
+        """Get chunks whose dependencies have changed since last indexing.
+
+        Returns chunks with staleness_score >= threshold, grouped by file.
+        A staleness score of 0.8 means a direct dependency changed;
+        0.64 means a dependency-of-a-dependency changed, etc.
+        """
+        stale = self.storage.get_stale_chunks(threshold)
+
+        by_doc: Dict[str, list] = {}
+        for chunk in stale:
+            by_doc.setdefault(chunk["document_path"], []).append({
+                "chunk_id": chunk["chunk_id"],
+                "staleness_score": chunk["staleness_score"],
+                "token_count": chunk["token_count"],
+                "content_preview": (chunk.get("content") or "")[:200],
+            })
+
+        return {
+            "threshold": threshold,
+            "total_stale": len(stale),
+            "files_affected": len(by_doc),
+            "by_document": [
+                {
+                    "path": doc_path,
+                    "chunks": chunks,
+                }
+                for doc_path, chunks in sorted(
+                    by_doc.items(),
+                    key=lambda x: max(c["staleness_score"] for c in x[1]),
+                    reverse=True,
+                )
+            ],
+        }
 
     def find_references(self, symbol: str) -> Dict[str, Any]:
         """Find all references to a symbol across the codebase.

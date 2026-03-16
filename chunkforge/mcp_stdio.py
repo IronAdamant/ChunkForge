@@ -400,6 +400,20 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
                     "properties": {},
                 },
             ),
+            Tool(
+                name="stale_chunks",
+                description="Get chunks whose dependencies changed — detects context rot through the symbol graph",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "threshold": {
+                            "type": "number",
+                            "description": "Minimum staleness score (0.0-1.0, default 0.3). 0.8 = direct dep changed, 0.64 = transitive",
+                            "default": 0.3,
+                        },
+                    },
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -490,6 +504,10 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
                 )
             elif name == "rebuild_symbols":
                 result = engine.rebuild_symbol_graph()
+            elif name == "stale_chunks":
+                result = engine.stale_chunks(
+                    threshold=arguments.get("threshold", 0.3),
+                )
             else:
                 result = {"error": f"Unknown tool: {name}"}
 

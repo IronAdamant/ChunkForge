@@ -187,6 +187,11 @@ class StorageBackend:
                     "ALTER TABLE chunks ADD COLUMN version INTEGER DEFAULT 1"
                 )
                 changed = True
+            if "staleness_score" not in columns:
+                conn.execute(
+                    "ALTER TABLE chunks ADD COLUMN staleness_score REAL DEFAULT 0.0"
+                )
+                changed = True
             if changed:
                 conn.commit()
 
@@ -502,6 +507,46 @@ class StorageBackend:
     def get_symbol_stats(self) -> Dict[str, Any]:
         """Get symbol and edge statistics."""
         return self._symbol_storage.get_symbol_stats()
+
+    # Staleness methods
+
+    def set_staleness(self, chunk_id: str, score: float) -> None:
+        """Set staleness score for a chunk."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "UPDATE chunks SET staleness_score = ? WHERE chunk_id = ?",
+                (score, chunk_id),
+            )
+            conn.commit()
+
+    def set_staleness_batch(self, updates: List[tuple]) -> None:
+        """Set staleness for multiple chunks. Each: (score, chunk_id)."""
+        if not updates:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executemany(
+                "UPDATE chunks SET staleness_score = ? WHERE chunk_id = ?",
+                updates,
+            )
+            conn.commit()
+
+    def clear_staleness(self) -> None:
+        """Reset all staleness scores to 0."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("UPDATE chunks SET staleness_score = 0.0")
+            conn.commit()
+
+    def get_stale_chunks(self, threshold: float = 0.3) -> List[Dict[str, Any]]:
+        """Get chunks with staleness_score >= threshold."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT chunk_id, document_path, staleness_score, token_count, content "
+                "FROM chunks WHERE staleness_score >= ? "
+                "ORDER BY staleness_score DESC",
+                (threshold,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
 
     def get_all_documents(self) -> List[Dict[str, Any]]:
         """Get all indexed documents."""

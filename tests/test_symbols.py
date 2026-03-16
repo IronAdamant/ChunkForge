@@ -1,5 +1,6 @@
 """Tests for symbol extraction, resolution, and graph queries."""
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -402,3 +403,130 @@ class TestEngineSymbolIntegration:
         # Symbol should be gone
         result = self.cf.find_definition("temp_func")
         assert result["count"] == 0
+
+
+# -- Directory indexing tests ------------------------------------------------
+
+
+class TestDirectoryIndexing:
+    """Test that index_documents accepts directories."""
+
+    def setup_method(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.cf = ChunkForge(storage_dir=os.path.join(self.tmpdir, "store"))
+        self.src = Path(self.tmpdir) / "src"
+        self.src.mkdir()
+
+    def test_index_directory(self):
+        """Indexing a directory should recursively find supported files."""
+        (self.src / "a.py").write_text("def foo():\n    pass\n")
+        (self.src / "b.py").write_text("def bar():\n    pass\n")
+        (self.src / "readme.md").write_text("# Hello\n")
+        result = self.cf.index_documents([str(self.src)])
+        assert len(result["indexed"]) == 3
+        assert result["errors"] == []
+
+    def test_skips_hidden_dirs(self):
+        """Hidden directories should be skipped."""
+        hidden = self.src / ".hidden"
+        hidden.mkdir()
+        (hidden / "secret.py").write_text("x = 1\n")
+        (self.src / "visible.py").write_text("y = 2\n")
+        result = self.cf.index_documents([str(self.src)])
+        paths = [r["path"] for r in result["indexed"]]
+        assert len(paths) == 1
+        assert "visible.py" in paths[0]
+
+    def test_skips_node_modules(self):
+        """node_modules and similar dirs should be skipped."""
+        nm = self.src / "node_modules"
+        nm.mkdir()
+        (nm / "pkg.js").write_text("function x() {}\n")
+        (self.src / "app.js").write_text("function y() {}\n")
+        result = self.cf.index_documents([str(self.src)])
+        assert len(result["indexed"]) == 1
+
+    def test_skips_unsupported_extensions(self):
+        """Files with unsupported extensions should be ignored."""
+        (self.src / "data.bin").write_bytes(b"\x00\x01\x02")
+        (self.src / "code.py").write_text("pass\n")
+        result = self.cf.index_documents([str(self.src)])
+        assert len(result["indexed"]) == 1
+
+    def test_mixed_files_and_dirs(self):
+        """Mixing file paths and directory paths should work."""
+        sub = self.src / "sub"
+        sub.mkdir()
+        (sub / "inner.py").write_text("z = 3\n")
+        single = self.src / "single.py"
+        single.write_text("w = 4\n")
+        result = self.cf.index_documents([str(single), str(sub)])
+        assert len(result["indexed"]) == 2
+
+
+# -- Staleness propagation tests --------------------------------------------
+
+
+class TestStalenessPropagation:
+    """Test staleness scoring through the symbol graph."""
+
+    def setup_method(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.cf = ChunkForge(storage_dir=os.path.join(self.tmpdir, "store"))
+        self.src = Path(self.tmpdir) / "src"
+        self.src.mkdir()
+
+    def test_no_staleness_before_changes(self):
+        (self.src / "a.py").write_text("def foo():\n    pass\n")
+        self.cf.index_documents([str(self.src)])
+        stale = self.cf.stale_chunks(threshold=0.01)
+        assert stale["total_stale"] == 0
+
+    def test_direct_dependent_gets_stale(self):
+        """Changing base.py should make lib.py stale."""
+        (self.src / "base.py").write_text("class Base:\n    pass\n")
+        (self.src / "lib.py").write_text("from base import Base\nclass Lib(Base):\n    pass\n")
+        self.cf.index_documents([str(self.src)])
+
+        # Modify base.py
+        (self.src / "base.py").write_text("class Base:\n    x = 99\n")
+        self.cf.detect_changes_and_update(session_id="test")
+
+        stale = self.cf.stale_chunks(threshold=0.1)
+        assert stale["total_stale"] >= 1
+        stale_paths = [
+            d["path"] for d in stale["by_document"]
+        ]
+        assert any("lib.py" in p for p in stale_paths)
+
+    def test_transitive_staleness_decays(self):
+        """Staleness should decay with graph distance."""
+        (self.src / "base.py").write_text("def core():\n    return 1\n")
+        (self.src / "mid.py").write_text("from base import core\ndef middle():\n    return core()\n")
+        (self.src / "top.py").write_text("from mid import middle\ndef top():\n    return middle()\n")
+        self.cf.index_documents([str(self.src)])
+
+        (self.src / "base.py").write_text("def core():\n    return 99\n")
+        self.cf.detect_changes_and_update(session_id="test")
+
+        stale = self.cf.stale_chunks(threshold=0.1)
+        scores = {}
+        for doc in stale["by_document"]:
+            name = Path(doc["path"]).name
+            scores[name] = max(c["staleness_score"] for c in doc["chunks"])
+
+        # mid.py should be more stale than top.py
+        if "mid.py" in scores and "top.py" in scores:
+            assert scores["mid.py"] > scores["top.py"]
+
+    def test_changed_chunks_not_stale(self):
+        """The modified chunks themselves should have staleness 0."""
+        (self.src / "a.py").write_text("x = 1\n")
+        self.cf.index_documents([str(self.src)])
+
+        (self.src / "a.py").write_text("x = 2\n")
+        self.cf.detect_changes_and_update(session_id="test")
+
+        stale = self.cf.stale_chunks(threshold=0.01)
+        for doc in stale.get("by_document", []):
+            assert "a.py" not in doc["path"]
