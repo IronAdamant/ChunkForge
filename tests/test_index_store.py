@@ -1,8 +1,8 @@
 """Tests for persistent HNSW index serialization."""
 
-from chunkforge.engine import ChunkForge
-from chunkforge.index import HNSWIndex, VectorIndex
-from chunkforge.index_store import (
+from stele.engine import Stele
+from stele.index import HNSWIndex, VectorIndex
+from stele.index_store import (
     INDEX_FILENAME,
     compute_chunk_ids_hash,
     load_if_fresh,
@@ -126,7 +126,7 @@ class TestIndexStore:
 
 
 class TestIndexPersistenceIntegration:
-    """Integration tests with ChunkForge engine."""
+    """Integration tests with Stele engine."""
 
     def test_index_persisted_after_indexing(self, tmp_path):
         """Test that index file is created after indexing documents."""
@@ -134,7 +134,7 @@ class TestIndexPersistenceIntegration:
         test_file.write_text("Hello world test content.")
 
         storage_dir = str(tmp_path / "storage")
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
         cf.index_documents([str(test_file)])
 
         index_path = cf.storage.index_dir / INDEX_FILENAME
@@ -146,12 +146,12 @@ class TestIndexPersistenceIntegration:
         test_file.write_text("Hello world. " * 20)
 
         storage_dir = str(tmp_path / "storage")
-        cf1 = ChunkForge(storage_dir=storage_dir)
+        cf1 = Stele(storage_dir=storage_dir)
         cf1.index_documents([str(test_file)])
         count1 = cf1.vector_index.get_stats()["chunk_count"]
 
         # Second startup should load from disk
-        cf2 = ChunkForge(storage_dir=storage_dir)
+        cf2 = Stele(storage_dir=storage_dir)
         count2 = cf2.vector_index.get_stats()["chunk_count"]
 
         assert count1 == count2
@@ -163,7 +163,7 @@ class TestIndexPersistenceIntegration:
 
         test_file1 = tmp_path / "test1.txt"
         test_file1.write_text("First document content.")
-        cf1 = ChunkForge(storage_dir=storage_dir)
+        cf1 = Stele(storage_dir=storage_dir)
         cf1.index_documents([str(test_file1)])
         count1 = cf1.vector_index.get_stats()["chunk_count"]
 
@@ -174,7 +174,7 @@ class TestIndexPersistenceIntegration:
         count2 = cf1.vector_index.get_stats()["chunk_count"]
 
         # Third startup should detect stale index and rebuild
-        cf3 = ChunkForge(storage_dir=storage_dir)
+        cf3 = Stele(storage_dir=storage_dir)
         count3 = cf3.vector_index.get_stats()["chunk_count"]
 
         assert count3 == count2
@@ -186,11 +186,11 @@ class TestIndexPersistenceIntegration:
         test_file.write_text("def add(a, b): return a + b")
 
         storage_dir = str(tmp_path / "storage")
-        cf1 = ChunkForge(storage_dir=storage_dir)
+        cf1 = Stele(storage_dir=storage_dir)
         cf1.index_documents([str(test_file)])
 
         # Reload
-        cf2 = ChunkForge(storage_dir=storage_dir)
+        cf2 = Stele(storage_dir=storage_dir)
         results = cf2.search("addition function", top_k=5)
         assert len(results) >= 1
         assert "content" in results[0]
@@ -201,7 +201,7 @@ class TestIndexPersistenceIntegration:
         test_file.write_text("Test content.")
 
         storage_dir = str(tmp_path / "storage")
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
         cf.index_documents([str(test_file)])
 
         hash1 = compute_chunk_ids_hash(cf.storage)

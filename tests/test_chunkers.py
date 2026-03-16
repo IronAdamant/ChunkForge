@@ -1,8 +1,8 @@
-"""Tests for ChunkForge chunkers."""
+"""Tests for Stele chunkers."""
 
-from chunkforge.chunkers.text import TextChunker
-from chunkforge.chunkers.code import CodeChunker
-from chunkforge.chunkers.base import Chunk
+from stele.chunkers.text import TextChunker
+from stele.chunkers.code import CodeChunker
+from stele.chunkers.base import Chunk
 
 
 class TestTextChunker:

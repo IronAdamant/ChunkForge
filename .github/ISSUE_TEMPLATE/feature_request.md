@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for ChunkForge
+about: Suggest an idea for Stele
 title: '[FEATURE] '
 labels: enhancement
 assignees: ''
@@ -30,9 +30,9 @@ Describe the use case(s) for this feature:
 
 ```python
 # Show how the feature would be used
-from chunkforge import ChunkForge
+from stele import Stele
 
-cf = ChunkForge()
+cf = Stele()
 # Example code using the new feature
 ```
 

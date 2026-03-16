@@ -1,1 +1,1 @@
-"""ChunkForge test suite."""
+"""Stele test suite."""

@@ -1,14 +1,14 @@
-"""Tests for ChunkForge session management."""
+"""Tests for Stele session management."""
 
-from chunkforge.engine import ChunkForge
-from chunkforge.session import SessionManager
+from stele.engine import Stele
+from stele.session import SessionManager
 
 
 class TestSessionManager:
     """Tests for SessionManager."""
 
     def _setup(self, tmp_path):
-        """Create a ChunkForge instance and index a test file."""
+        """Create a Stele instance and index a test file."""
         storage_dir = str(tmp_path / "storage")
         test_file = tmp_path / "test.py"
         test_file.write_text(
@@ -24,7 +24,7 @@ def multiply(a, b):
 """.strip()
         )
 
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
         cf.index_documents([str(test_file)])
 
         # Store some KV state
@@ -53,7 +53,7 @@ def multiply(a, b):
 
     def test_get_relevant_chunks_empty_session(self, tmp_path):
         """Test get_relevant_chunks on non-existent session."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         sm = SessionManager(cf.storage, cf.vector_index)
 
         result = sm.get_relevant_chunks("nonexistent", "query")
@@ -66,7 +66,7 @@ def multiply(a, b):
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello world content.")
 
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
         cf.index_documents([str(test_file)])
 
         sm = SessionManager(cf.storage, cf.vector_index)
@@ -95,7 +95,7 @@ def multiply(a, b):
 
     def test_rollback_nonexistent_session(self, tmp_path):
         """Test rollback on non-existent session."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         sm = SessionManager(cf.storage, cf.vector_index)
 
         result = sm.rollback("nonexistent", 0)
@@ -119,6 +119,6 @@ def multiply(a, b):
 
     def test_save_kv_state_alias(self, tmp_path):
         """Test that save_kv_state is an alias for save_state."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         sm = SessionManager(cf.storage, cf.vector_index)
         assert sm.save_kv_state == sm.save_state

@@ -1,7 +1,7 @@
 """Tests for BM25 keyword index."""
 
-from chunkforge.bm25 import BM25Index
-from chunkforge.index_store import save_bm25, load_bm25_if_fresh
+from stele.bm25 import BM25Index
+from stele.index_store import save_bm25, load_bm25_if_fresh
 
 
 class TestBM25Index:

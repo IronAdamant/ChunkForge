@@ -1,8 +1,8 @@
-# ChunkForge Multi-Modal Support Assessment
+# Stele Multi-Modal Support Assessment
 
 ## Current State: Text/Code Only
 
-ChunkForge v0.1.0 is **text-only**. Here's what that means:
+Stele v0.1.0 is **text-only**. Here's what that means:
 
 ### What Works Now
 - ✅ Plain text files (.txt, .md, .rst)
@@ -155,28 +155,28 @@ Multi-modal needs:
 
 ```python
 # Core: zero dependencies
-pip install chunkforge
+pip install stele
 
 # Image support
-pip install chunkforge[image]
+pip install stele[image]
 
 # Audio support  
-pip install chunkforge[audio]
+pip install stele[audio]
 
 # Video support
-pip install chunkforge[video]
+pip install stele[video]
 
 # PDF support
-pip install chunkforge[pdf]
+pip install stele[pdf]
 
 # Everything
-pip install chunkforge[all]
+pip install stele[all]
 ```
 
 ### Modular Chunker Architecture
 
 ```python
-# chunkforge/chunkers/
+# stele/chunkers/
 ├── __init__.py
 ├── base.py          # Abstract base chunker
 ├── text.py          # Text chunker (current)
@@ -200,7 +200,7 @@ except ImportError:
 class ImageChunker:
     def __init__(self):
         if not HAS_PIL:
-            raise ImportError("Pillow required for image support. Install: pip install chunkforge[image]")
+            raise ImportError("Pillow required for image support. Install: pip install stele[image]")
 ```
 
 ---

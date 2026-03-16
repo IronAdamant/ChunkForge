@@ -1,6 +1,6 @@
-"""Tests for ChunkForge vector index."""
+"""Tests for Stele vector index."""
 
-from chunkforge.index import HNSWIndex, VectorIndex
+from stele.index import HNSWIndex, VectorIndex
 
 
 class TestHNSWIndex:

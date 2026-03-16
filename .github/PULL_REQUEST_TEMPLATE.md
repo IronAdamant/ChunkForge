@@ -36,13 +36,13 @@ Closes #(issue number)
 pytest
 
 # Run with coverage
-pytest --cov=chunkforge --cov-report=term-missing
+pytest --cov=stele --cov-report=term-missing
 
 # Type checking
-mypy chunkforge/
+mypy stele/
 
 # Linting
-ruff check chunkforge/
+ruff check stele/
 ```
 
 ## Documentation

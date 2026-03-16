@@ -1,11 +1,11 @@
-# ChunkForge
+# Stele
 
 Local context cache for LLM agents. 100% offline, zero required dependencies.
 
 ## Architecture
 
 ```
-ChunkForge (engine.py) -- main orchestrator
+Stele (engine.py) -- main orchestrator
   |-- Chunkers (text, code, image, pdf, audio, video)
   |     \-- BaseChunker ABC + Chunk dataclass (chunkers/base.py)
   |-- VectorIndex (HNSW, index.py) + BM25Index (bm25.py)
@@ -19,10 +19,21 @@ ChunkForge (engine.py) -- main orchestrator
 
 APIs:
   |-- CLI (cli.py + cli_metadata.py)
-  |-- HTTP REST (mcp_server.py, 15 tools, dynamic discovery from _TOOL_SCHEMAS)
-  \-- MCP stdio (mcp_stdio.py, 23 tools, JSON-RPC for Claude Desktop)
+  |-- HTTP REST (mcp_server.py, 21 tools, threaded, dynamic discovery)
+  \-- MCP stdio (mcp_stdio.py, 29 tools, JSON-RPC for Claude Desktop)
 
-Backward compat: core.py re-exports ChunkForge + Chunk
+Concurrency:
+  |-- RWLock (rwlock.py) -- read-write lock for engine thread safety
+  |-- ThreadedHTTPServer (mcp_server.py) -- one thread per HTTP request
+  \-- fcntl file locking (index_store.py) -- cross-process index safety
+
+Conflict prevention:
+  |-- DocumentLockStorage (document_lock_storage.py) -- ownership + versioning
+  |-- Per-document locks (acquire/release/force-steal with TTL expiry)
+  |-- Optimistic locking (doc_version compare-and-swap)
+  \-- Conflict log (document_conflicts table, audit trail)
+
+Backward compat: core.py re-exports Stele + Chunk
 ```
 
 ## Key Design Decisions
@@ -48,13 +59,23 @@ Backward compat: core.py re-exports ChunkForge + Chunk
 - **Module path resolution**: `resolve_symbols()` prefers definitions from imported module paths when multiple match.
 - **Adaptive ef_search**: HNSW search width scales with index size (10 for <100, 4x for 10K+).
 - **Dynamic versioning**: `__init__.__version__` is the single source. Engine, CLI, and tests all reference it.
+- **Thread safety**: `RWLock` in `rwlock.py` protects all engine public methods. Read methods (search, get_context, etc.) allow concurrent access. Write methods (index_documents, detect_changes, etc.) get exclusive access. BM25 lazy-init uses double-checked locking with a separate `threading.Lock`.
+- **Multi-agent sessions**: `sessions` table has `agent_id TEXT` column. `create_session(id, agent_id=)`, `list_sessions(agent_id=)`. Backward-compatible (agent_id defaults to None).
+- **Cross-process file locking**: `index_store.py` uses `fcntl.flock()` on `.lock` sidecar files. LOCK_EX for writes, LOCK_SH for reads. No-op fallback on Windows.
+- **Threaded HTTP**: `ThreadedHTTPServer(ThreadingMixIn, HTTPServer)` handles concurrent requests. Safe because RWLock protects engine state.
+- **Per-document ownership**: `acquire_document_lock(path, agent_id, ttl=300)` gives exclusive write access. Other agents can read but writes are rejected with `PermissionError`. Locks auto-expire after TTL. `force=True` steals lock and logs conflict. `release_agent_locks(agent_id)` for cleanup.
+- **Optimistic locking**: `doc_version INTEGER` on documents table, auto-incremented on each write. `index_documents(expected_versions={path: N})` rejects if version changed since last read. Prevents silent overwrites.
+- **Conflict log**: `document_conflicts` table records ownership violations, version conflicts, and lock steals with full audit trail. `get_conflicts(document_path=, agent_id=)` for querying.
+- **Store document upsert**: `store_document()` uses `INSERT ... ON CONFLICT DO UPDATE` instead of `INSERT OR REPLACE` to preserve `locked_by`/`doc_version` columns.
 
 ## SQLite Tables
 
 `chunks`, `chunk_history`, `documents` -- core storage
-`sessions`, `session_chunks` -- session lifecycle (SessionStorage)
+`sessions` (+ `agent_id`), `session_chunks` -- session lifecycle (SessionStorage)
 `annotations`, `change_history` -- metadata (MetadataStorage)
 `symbols`, `symbol_edges` -- symbol graph (SymbolStorage)
+`document_conflicts` -- conflict audit log (DocumentLockStorage)
+`documents` columns: `locked_by`, `locked_at`, `lock_ttl`, `doc_version`
 
 ## Module Boundaries
 
@@ -68,9 +89,9 @@ Backward compat: core.py re-exports ChunkForge + Chunk
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 244 tests (243 pass, 1 skipped without mcp SDK)
-mypy chunkforge/
-ruff check chunkforge/
+pytest                    # 287 tests (286 pass, 1 skipped without mcp SDK)
+mypy stele/
+ruff check stele/
 ```
 
-Entry points: `chunkforge` (CLI), `chunkforge-mcp` (MCP stdio server)
+Entry points: `stele` (CLI), `stele-mcp` (MCP stdio server)

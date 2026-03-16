@@ -68,8 +68,8 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# ChunkForge specific
-.chunkforge/
+# Stele specific
+.stele/
 *.db
 *.kv
 

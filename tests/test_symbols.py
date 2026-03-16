@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from chunkforge.engine import ChunkForge
-from chunkforge.symbols import (
+from stele.engine import Stele
+from stele.symbols import (
     SymbolExtractor, Symbol, resolve_symbols, _module_matches_path,
     _NOISE_REFS,
 )
-from chunkforge.symbol_storage import SymbolStorage
+from stele.symbol_storage import SymbolStorage
 
 
 # -- SymbolExtractor unit tests ----------------------------------------------
@@ -339,11 +339,11 @@ class TestSymbolStorage:
 
 
 class TestEngineSymbolIntegration:
-    """Test symbol graph integration in ChunkForge engine."""
+    """Test symbol graph integration in Stele engine."""
 
     def setup_method(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.cf = ChunkForge(storage_dir=self.tmpdir)
+        self.cf = Stele(storage_dir=self.tmpdir)
 
     def _write_and_index(self, filename: str, content: str) -> None:
         """Write a temp file and index it."""
@@ -416,7 +416,7 @@ class TestDirectoryIndexing:
 
     def setup_method(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.cf = ChunkForge(storage_dir=os.path.join(self.tmpdir, "store"))
+        self.cf = Stele(storage_dir=os.path.join(self.tmpdir, "store"))
         self.src = Path(self.tmpdir) / "src"
         self.src.mkdir()
 
@@ -475,7 +475,7 @@ class TestStalenessPropagation:
 
     def setup_method(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.cf = ChunkForge(storage_dir=os.path.join(self.tmpdir, "store"))
+        self.cf = Stele(storage_dir=os.path.join(self.tmpdir, "store"))
         self.src = Path(self.tmpdir) / "src"
         self.src.mkdir()
 
@@ -558,7 +558,7 @@ class TestSearchWithEdges:
 
     def setup_method(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.cf = ChunkForge(storage_dir=os.path.join(self.tmpdir, "store"))
+        self.cf = Stele(storage_dir=os.path.join(self.tmpdir, "store"))
         self.src = Path(self.tmpdir) / "src"
         self.src.mkdir()
 
@@ -603,7 +603,7 @@ class TestConfigurableSkipDirs:
         self.src.mkdir()
 
     def test_custom_skip_dir(self):
-        cf = ChunkForge(
+        cf = Stele(
             storage_dir=os.path.join(self.tmpdir, "store"),
             skip_dirs={"vendor"},
         )
@@ -617,7 +617,7 @@ class TestConfigurableSkipDirs:
         assert not any("vendor" in p for p in paths)
 
     def test_default_skips_preserved(self):
-        cf = ChunkForge(
+        cf = Stele(
             storage_dir=os.path.join(self.tmpdir, "store"),
             skip_dirs={"extra"},
         )
@@ -626,8 +626,8 @@ class TestConfigurableSkipDirs:
         assert "extra" in cf.skip_dirs
 
     def test_no_custom_skips(self):
-        cf = ChunkForge(storage_dir=os.path.join(self.tmpdir, "store"))
-        assert cf.skip_dirs == ChunkForge.DEFAULT_SKIP_DIRS
+        cf = Stele(storage_dir=os.path.join(self.tmpdir, "store"))
+        assert cf.skip_dirs == Stele.DEFAULT_SKIP_DIRS
 
 
 # -- Module path resolution tests -------------------------------------------
@@ -637,10 +637,10 @@ class TestModulePathResolution:
     """Test that resolve_symbols prefers definitions from imported modules."""
 
     def test_module_matches_path(self):
-        assert _module_matches_path("chunkforge.engine", "/src/chunkforge/engine.py")
+        assert _module_matches_path("stele.engine", "/src/stele/engine.py")
         assert _module_matches_path("utils", "/project/utils.py")
         assert _module_matches_path("pkg.sub", "/a/pkg/sub.py")
-        assert not _module_matches_path("chunkforge.engine", "/src/other/engine.py")
+        assert not _module_matches_path("stele.engine", "/src/other/engine.py")
         assert not _module_matches_path("foo", "/src/bar.py")
 
     def test_prefers_imported_module(self):
@@ -681,7 +681,7 @@ class TestModulePathResolution:
         (src / "other_utils.py").write_text("def helper():\n    return 2\n")
         (src / "app.py").write_text("from pkg.utils import helper\nresult = helper()\n")
 
-        cf = ChunkForge(storage_dir=os.path.join(tmpdir, "store"))
+        cf = Stele(storage_dir=os.path.join(tmpdir, "store"))
         cf.index_documents([str(src)])
 
         # app.py should only link to pkg/utils.py, not other_utils.py
@@ -726,8 +726,8 @@ class TestNoiseFilter:
     def test_real_names_not_filtered(self):
         """User-defined names should still create edges."""
         symbols = [
-            Symbol("ChunkForge", "class", "definition", "c1", "engine.py"),
-            Symbol("ChunkForge", "class", "reference", "c2", "cli.py"),
+            Symbol("Stele", "class", "definition", "c1", "engine.py"),
+            Symbol("Stele", "class", "reference", "c2", "cli.py"),
         ]
         edges = resolve_symbols(symbols)
         assert len(edges) == 1
@@ -788,16 +788,16 @@ class TestSymbolBoostedSearch:
 
     def setup_method(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.cf = ChunkForge(storage_dir=os.path.join(self.tmpdir, "store"))
+        self.cf = Stele(storage_dir=os.path.join(self.tmpdir, "store"))
         self.src = Path(self.tmpdir) / "src"
         self.src.mkdir()
 
     def test_query_identifier_extraction(self):
-        idents = ChunkForge._extract_query_identifiers("StorageBackend")
+        idents = Stele._extract_query_identifiers("StorageBackend")
         assert "StorageBackend" in idents or "Storage" in idents
 
     def test_query_identifier_filters_stopwords(self):
-        idents = ChunkForge._extract_query_identifiers("the and for")
+        idents = Stele._extract_query_identifiers("the and for")
         assert len(idents) == 0
 
     def test_symbol_match_in_results(self):
@@ -825,7 +825,7 @@ class TestIncrementalEdgeRebuild:
 
     def setup_method(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.cf = ChunkForge(storage_dir=os.path.join(self.tmpdir, "store"))
+        self.cf = Stele(storage_dir=os.path.join(self.tmpdir, "store"))
         self.src = Path(self.tmpdir) / "src"
         self.src.mkdir()
 

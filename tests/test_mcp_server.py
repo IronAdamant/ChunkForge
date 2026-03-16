@@ -9,8 +9,8 @@ import json
 import urllib.request
 import urllib.error
 
-from chunkforge.engine import ChunkForge
-from chunkforge.mcp_server import MCPServer, _TOOL_SCHEMAS
+from stele.engine import Stele
+from stele.mcp_server import MCPServer, _TOOL_SCHEMAS
 
 
 class TestHTTPServer:
@@ -18,8 +18,8 @@ class TestHTTPServer:
 
     def _start_server(self, tmp_path, port=0):
         """Start a server on an ephemeral port, return (server, base_url)."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
-        server = MCPServer(chunkforge=cf, host="127.0.0.1", port=port)
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
+        server = MCPServer(stele=cf, host="127.0.0.1", port=port)
         server.start(blocking=False)
         # Get the actual port assigned by the OS
         actual_port = server.server.server_address[1]
@@ -66,7 +66,8 @@ class TestHTTPServer:
             assert "stale_chunks" in tool_names
             assert "detect_modality" in tool_names
             assert "get_supported_formats" in tool_names
-            assert len(tool_names) == 15
+            assert "list_sessions" in tool_names
+            assert len(tool_names) == 23
         finally:
             server.stop()
 

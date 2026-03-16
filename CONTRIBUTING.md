@@ -1,6 +1,6 @@
-# Contributing to ChunkForge
+# Contributing to Stele
 
-Thank you for your interest in contributing to ChunkForge! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Stele! This document provides guidelines and information for contributors.
 
 ## Table of Contents
 
@@ -37,8 +37,8 @@ This project adheres to a Code of Conduct. By participating, you are expected to
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/chunkforge.git
-cd chunkforge
+git clone https://github.com/YOUR_USERNAME/stele.git
+cd stele
 
 # Create a virtual environment
 python -m venv venv
@@ -55,10 +55,10 @@ pip install -e ".[dev]"
 pytest
 
 # Check code style
-mypy chunkforge/
+mypy stele/
 
 # Run CLI
-chunkforge --version
+stele --version
 ```
 
 ## Making Changes
@@ -101,19 +101,19 @@ We welcome contributions in these areas:
 pytest
 
 # Run with coverage
-pytest --cov=chunkforge --cov-report=html
+pytest --cov=stele --cov-report=html
 
 # Run specific test file
 pytest tests/test_core.py
 
 # Run specific test
-pytest tests/test_core.py::TestChunkForge::test_index_documents
+pytest tests/test_core.py::TestStele::test_index_documents
 ```
 
 ### Writing Tests
 
 - Place tests in the `tests/` directory
-- Mirror the source structure: `tests/test_core.py` for `chunkforge/core.py`
+- Mirror the source structure: `tests/test_core.py` for `stele/core.py`
 - Use pytest fixtures for common setup
 - Aim for >90% coverage on new code
 
@@ -121,7 +121,7 @@ Example test:
 
 ```python
 import pytest
-from chunkforge import ChunkForge
+from stele import Stele
 
 def test_index_documents(tmp_path):
     """Test document indexing."""
@@ -130,7 +130,7 @@ def test_index_documents(tmp_path):
     test_file.write_text("Hello, world!")
     
     # Index document
-    cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+    cf = Stele(storage_dir=str(tmp_path / "storage"))
     result = cf.index_documents([str(test_file)])
     
     # Verify
@@ -200,14 +200,14 @@ We use:
 
 ```bash
 # Format code
-black chunkforge/ tests/
-isort chunkforge/ tests/
+black stele/ tests/
+isort stele/ tests/
 
 # Check types
-mypy chunkforge/
+mypy stele/
 
 # Lint
-ruff check chunkforge/ tests/
+ruff check stele/ tests/
 ```
 
 ### Principles
@@ -264,7 +264,7 @@ Brief description of changes
 ### Bug Reports
 
 Include:
-- ChunkForge version
+- Stele version
 - Python version
 - Operating system
 - Steps to reproduce
@@ -316,4 +316,4 @@ By contributing, you agree that your contributions will be licensed under the MI
 
 ---
 
-Thank you for contributing to ChunkForge! 🚀
+Thank you for contributing to Stele! 🚀

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "stele": {
+      "command": "/home/aron/Documents/coding_projects/Stele/.venv/bin/stele",
+      "args": ["serve-mcp"]
+    }
+  }
+}

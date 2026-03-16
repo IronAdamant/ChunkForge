@@ -1,7 +1,7 @@
-"""Tests for ChunkForge core functionality (backward compat)."""
+"""Tests for Stele core functionality (backward compat)."""
 
-from chunkforge import ChunkForge, __version__
-from chunkforge.core import Chunk
+from stele import Stele, __version__
+from stele.core import Chunk
 
 
 class TestChunk:
@@ -120,13 +120,13 @@ class TestChunk:
         assert 0.0 <= sim2 <= 1.0
 
 
-class TestChunkForge:
-    """Tests for the ChunkForge class."""
+class TestStele:
+    """Tests for the Stele class."""
 
     def test_initialization(self, tmp_path):
-        """Test ChunkForge initialization."""
+        """Test Stele initialization."""
         storage_dir = str(tmp_path / "storage")
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
 
         assert cf.chunk_size == 256
         assert cf.max_chunk_size == 4096
@@ -139,7 +139,7 @@ class TestChunkForge:
         test_file.write_text("Hello, world! This is a test document.")
 
         storage_dir = str(tmp_path / "storage")
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
         result = cf.index_documents([str(test_file)])
 
         assert result["total_chunks"] == 1
@@ -150,7 +150,7 @@ class TestChunkForge:
     def test_index_nonexistent_file(self, tmp_path):
         """Test indexing a non-existent file."""
         storage_dir = str(tmp_path / "storage")
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
         result = cf.index_documents(["nonexistent.txt"])
 
         assert len(result["errors"]) == 1
@@ -162,7 +162,7 @@ class TestChunkForge:
         test_file.write_text("Hello, world!")
 
         storage_dir = str(tmp_path / "storage")
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
         result1 = cf.index_documents([str(test_file)])
 
         result2 = cf.index_documents([str(test_file)])
@@ -177,7 +177,7 @@ class TestChunkForge:
         test_file.write_text("Hello, world!")
 
         storage_dir = str(tmp_path / "storage")
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
         cf.index_documents([str(test_file)])
 
         result = cf.detect_changes_and_update(session_id="test-session")
@@ -188,7 +188,7 @@ class TestChunkForge:
     def test_get_stats(self, tmp_path):
         """Test getting statistics."""
         storage_dir = str(tmp_path / "storage")
-        cf = ChunkForge(storage_dir=storage_dir)
+        cf = Stele(storage_dir=storage_dir)
         stats = cf.get_stats()
 
         assert "version" in stats
@@ -202,7 +202,7 @@ class TestStorageBackend:
 
     def test_initialization(self, tmp_path):
         """Test storage backend initialization."""
-        from chunkforge.storage import StorageBackend
+        from stele.storage import StorageBackend
 
         storage_dir = str(tmp_path / "storage")
         storage = StorageBackend(base_dir=storage_dir)
@@ -214,7 +214,7 @@ class TestStorageBackend:
 
     def test_store_and_retrieve_chunk(self, tmp_path):
         """Test storing and retrieving chunks."""
-        from chunkforge.storage import StorageBackend
+        from stele.storage import StorageBackend
 
         storage_dir = str(tmp_path / "storage")
         storage = StorageBackend(base_dir=storage_dir)
@@ -246,7 +246,7 @@ class TestStorageBackend:
 
     def test_create_and_get_session(self, tmp_path):
         """Test creating and retrieving sessions."""
-        from chunkforge.storage import StorageBackend
+        from stele.storage import StorageBackend
 
         storage_dir = str(tmp_path / "storage")
         storage = StorageBackend(base_dir=storage_dir)

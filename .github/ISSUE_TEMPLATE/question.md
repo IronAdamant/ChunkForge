@@ -1,6 +1,6 @@
 ---
 name: Question
-about: Ask a question about ChunkForge
+about: Ask a question about Stele
 title: '[QUESTION] '
 labels: question
 assignees: ''
@@ -8,7 +8,7 @@ assignees: ''
 
 ## Question
 
-A clear and concise question about ChunkForge.
+A clear and concise question about Stele.
 
 ## Context
 
@@ -19,7 +19,7 @@ Provide any relevant context for your question:
 
 ## Environment (if relevant)
 
-- **ChunkForge Version**: [e.g., 0.1.0]
+- **Stele Version**: [e.g., 0.1.0]
 - **Python Version**: [e.g., 3.12.0]
 - **Operating System**: [e.g., Ubuntu 22.04, macOS 14.0, Windows 11]
 
@@ -27,9 +27,9 @@ Provide any relevant context for your question:
 
 ```python
 # Paste relevant code here
-from chunkforge import ChunkForge
+from stele import Stele
 
-cf = ChunkForge()
+cf = Stele()
 # Your code
 ```
 

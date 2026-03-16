@@ -1,13 +1,13 @@
-"""Tests for ChunkForge metadata tools: annotate, map, history, and enhancements."""
+"""Tests for Stele metadata tools: annotate, map, history, and enhancements."""
 
 import time
 
-from chunkforge.engine import ChunkForge
+from stele.engine import Stele
 
 
 def _make_engine(tmp_path):
-    """Shared helper to create a ChunkForge engine in a temp directory."""
-    return ChunkForge(storage_dir=str(tmp_path / "storage"))
+    """Shared helper to create a Stele engine in a temp directory."""
+    return Stele(storage_dir=str(tmp_path / "storage"))
 
 
 class TestAnnotations:

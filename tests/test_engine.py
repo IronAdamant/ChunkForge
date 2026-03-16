@@ -1,16 +1,16 @@
-"""Tests for ChunkForge engine."""
+"""Tests for Stele engine."""
 
-from chunkforge import __version__
-from chunkforge.engine import ChunkForge
-from chunkforge.chunkers.base import Chunk
+from stele import __version__
+from stele.engine import Stele
+from stele.chunkers.base import Chunk
 
 
-class TestChunkForgeEngine:
-    """Tests for the new ChunkForge engine."""
+class TestSteleEngine:
+    """Tests for the new Stele engine."""
 
     def test_initialization_creates_vector_index(self, tmp_path):
         """Test that engine initializes with vector index."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         assert cf.vector_index is not None
         stats = cf.vector_index.get_stats()
         assert stats["chunk_count"] == 0
@@ -32,7 +32,7 @@ class Greeter:
 """.strip()
         )
 
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         result = cf.index_documents([str(test_file)])
 
         assert len(result["indexed"]) == 1
@@ -44,7 +44,7 @@ class Greeter:
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello world. This is a test.")
 
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         result = cf.index_documents([str(test_file)])
 
         assert len(result["indexed"]) == 1
@@ -56,7 +56,7 @@ class Greeter:
         content = "Hello world. This is a test document with some content."
         test_file.write_text(content)
 
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         cf.index_documents([str(test_file)])
 
         # Get chunks for the document
@@ -73,7 +73,7 @@ class Greeter:
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello world content.")
 
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         cf.index_documents([str(test_file)])
 
         chunks = cf.storage.get_document_chunks(str(test_file))
@@ -87,7 +87,7 @@ class Greeter:
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello world. " * 50)
 
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         cf.index_documents([str(test_file)])
 
         stats = cf.vector_index.get_stats()
@@ -106,7 +106,7 @@ def multiply(a, b):
 """.strip()
         )
 
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         cf.index_documents([str(test_file)])
 
         results = cf.search("addition function", top_k=5)
@@ -117,7 +117,7 @@ def multiply(a, b):
 
     def test_search_empty_index(self, tmp_path):
         """Test search on empty index returns empty list."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         results = cf.search("anything", top_k=5)
         assert results == []
 
@@ -126,7 +126,7 @@ def multiply(a, b):
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello world. Test content.")
 
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         cf.index_documents([str(test_file)])
 
         context = cf.get_context([str(test_file)])
@@ -141,7 +141,7 @@ def multiply(a, b):
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello world.")
 
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         context = cf.get_context([str(test_file)])
 
         assert len(context["new"]) == 1
@@ -152,7 +152,7 @@ def multiply(a, b):
         test_file = tmp_path / "test.txt"
         test_file.write_text("Original content.")
 
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         cf.index_documents([str(test_file)])
 
         # Modify the file
@@ -169,12 +169,12 @@ def multiply(a, b):
         test_file.write_text("Hello world. " * 20)
 
         # Index with first instance
-        cf1 = ChunkForge(storage_dir=storage_dir)
+        cf1 = Stele(storage_dir=storage_dir)
         cf1.index_documents([str(test_file)])
         count1 = cf1.vector_index.get_stats()["chunk_count"]
 
         # Create new instance — should rebuild index from SQLite
-        cf2 = ChunkForge(storage_dir=storage_dir)
+        cf2 = Stele(storage_dir=storage_dir)
         count2 = cf2.vector_index.get_stats()["chunk_count"]
 
         assert count1 == count2
@@ -182,7 +182,7 @@ def multiply(a, b):
 
     def test_detect_modality(self, tmp_path):
         """Test modality detection."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
 
         assert cf.detect_modality("test.py") == "code"
         assert cf.detect_modality("test.js") == "code"
@@ -192,7 +192,7 @@ def multiply(a, b):
 
     def test_stats_includes_index(self, tmp_path):
         """Test that stats includes vector index info."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         stats = cf.get_stats()
 
         assert "index" in stats
@@ -201,12 +201,12 @@ def multiply(a, b):
 
     def test_save_and_load_state_alias(self, tmp_path):
         """Test that save_state is an alias for save_kv_state."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         assert cf.save_state == cf.save_kv_state
 
     def test_merge_similar_chunks(self, tmp_path):
         """Test that similar adjacent chunks get merged."""
-        cf = ChunkForge(
+        cf = Stele(
             storage_dir=str(tmp_path / "storage"),
             merge_threshold=0.5,
         )
@@ -236,7 +236,7 @@ def multiply(a, b):
 
     def test_remove_document(self, tmp_path):
         """Test removing a document cleans up chunks, annotations, and index."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
 
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
@@ -265,13 +265,13 @@ def multiply(a, b):
 
     def test_remove_nonexistent_document(self, tmp_path):
         """Test removing a document that doesn't exist."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
         result = cf.remove_document("/no/such/file.py")
         assert result["removed"] is False
 
     def test_reindex_cleans_stale_chunks(self, tmp_path):
         """Test that re-indexing removes stale chunks."""
-        cf = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
 
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass\ndef world(): pass")

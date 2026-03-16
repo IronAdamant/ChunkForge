@@ -1,12 +1,12 @@
-# ChunkForge
+# Stele
 
 **Local context cache for LLM agents with semantic chunking and vector search.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-green.svg)](https://github.com/IronAdamant/ChunkForge)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-green.svg)](https://github.com/IronAdamant/Stele)
 
-ChunkForge helps LLM agents avoid re-reading unchanged files by caching chunk data with semantic search. Documents are routed through modality-specific chunkers, chunk content is stored in SQLite, and an HNSW vector index enables fast O(log n) retrieval. Only modified chunks trigger reprocessing.
+Stele helps LLM agents avoid re-reading unchanged files by caching chunk data with semantic search. Documents are routed through modality-specific chunkers, chunk content is stored in SQLite, and an HNSW vector index enables fast O(log n) retrieval. Only modified chunks trigger reprocessing.
 
 ## Key Features
 
@@ -35,6 +35,7 @@ ChunkForge helps LLM agents avoid re-reading unchanged files by caching chunk da
 - **Session Management**: Sessions with rollback support and automatic pruning
 - **Persistent Storage**: SQLite metadata + filesystem cache with full rollback support
 - **HTTP REST Server**: `serve` command for HTTP API integration
+- **Multi-Agent Safe**: Per-document locking, optimistic versioning, conflict audit log — multiple agents share one Stele instance without stepping on each other
 - **Optional Performance**: `msgspec` and `numpy` for speed (with stdlib fallbacks)
 
 ## Installation
@@ -43,8 +44,8 @@ ChunkForge helps LLM agents avoid re-reading unchanged files by caching chunk da
 
 ```bash
 # Clone the repository
-git clone https://github.com/chunkforge/chunkforge.git
-cd chunkforge
+git clone https://github.com/IronAdamant/Stele.git
+cd stele
 
 # Install in development mode
 pip install -e .
@@ -72,15 +73,15 @@ Optional (all 100% offline, no network):
 
 ```bash
 # Install with specific modalities
-pip install chunkforge[image,pdf]
-pip install chunkforge[all]
+pip install stele[image,pdf]
+pip install stele[all]
 ```
 
 All features work with Python standard library alone (text/code).
 
 ## Security & Supply Chain
 
-ChunkForge is designed with security in mind:
+Stele is designed with security in mind:
 
 - **Zero required dependencies** - No supply chain attack surface for core functionality
 - **No model downloads** - Semantic signatures use simple TF-style features, not ML models
@@ -92,7 +93,7 @@ ChunkForge is designed with security in mind:
 For maximum security:
 ```bash
 # Install with zero dependencies
-pip install chunkforge --no-deps
+pip install stele --no-deps
 ```
 
 ## Supported Formats
@@ -138,38 +139,38 @@ pip install chunkforge --no-deps
 
 ```bash
 # Index files (auto-detects modality)
-chunkforge index src/*.py docs/*.md
+stele index src/*.py docs/*.md
 
 # Force re-indexing
-chunkforge index --force document.py
+stele index --force document.py
 ```
 
 ### 2. Semantic Search
 
 ```bash
 # Search across all indexed chunks
-chunkforge search "authentication logic" --top-k 5
+stele search "authentication logic" --top-k 5
 
 # JSON output
-chunkforge search "error handling" --json
+stele search "error handling" --json
 ```
 
 ### 3. MCP Server (for Claude Code / Claude Desktop)
 
 ```bash
 # Install MCP dependency
-pip install chunkforge[mcp]
+pip install stele[mcp]
 
 # Start stdio MCP server
-chunkforge serve-mcp
+stele serve-mcp
 ```
 
 **Claude Code** (`~/.claude/settings.json`):
 ```json
 {
   "mcpServers": {
-    "chunkforge": {
-      "command": "chunkforge",
+    "stele": {
+      "command": "stele",
       "args": ["serve-mcp"]
     }
   }
@@ -180,28 +181,28 @@ chunkforge serve-mcp
 ```json
 {
   "mcpServers": {
-    "chunkforge": {
-      "command": "chunkforge",
+    "stele": {
+      "command": "stele",
       "args": ["serve-mcp"]
     }
   }
 }
 ```
 
-> **Tip:** If installed in a virtualenv, use the full path to the `chunkforge` binary (e.g., `/path/to/.venv/bin/chunkforge`).
+> **Tip:** If installed in a virtualenv, use the full path to the `stele` binary (e.g., `/path/to/.venv/bin/stele`).
 
 ### 4. HTTP REST Server
 
 ```bash
 # Start HTTP server on default port (9876)
-chunkforge serve --port 9876
+stele serve --port 9876
 ```
 
 ### 5. Detect Changes & View Stats
 
 ```bash
-chunkforge detect --session my-session
-chunkforge stats
+stele detect --session my-session
+stele stats
 ```
 
 ## Python API Usage
@@ -209,9 +210,9 @@ chunkforge stats
 ### Basic Usage
 
 ```python
-from chunkforge import ChunkForge
+from stele import Stele
 
-cf = ChunkForge(storage_dir="~/.chunkforge")
+cf = Stele(storage_dir="~/.stele")
 
 # Index documents (routes through modality-specific chunkers)
 result = cf.index_documents(["src/main.py", "README.md"])
@@ -247,7 +248,7 @@ for entry in cf.get_history(limit=10):
     print(f"[{entry['reason']}] {entry['session_id']}")
 
 # Symbol graph — cross-file reference tracking
-refs = cf.find_references("ChunkForge")
+refs = cf.find_references("Stele")
 print(f"{len(refs['definitions'])} definitions, {len(refs['references'])} references")
 
 # Find where a symbol is defined (with full content)
@@ -281,8 +282,8 @@ cf.prune_chunks("my-session", max_tokens=100000)
 ### Advanced Configuration
 
 ```python
-cf = ChunkForge(
-    storage_dir="~/.chunkforge",
+cf = Stele(
+    storage_dir="~/.stele",
     chunk_size=256,           # Target tokens per initial chunk
     max_chunk_size=4096,      # Maximum tokens per merged chunk
     merge_threshold=0.7,      # Default similarity threshold for merging
@@ -415,11 +416,11 @@ requests.post("http://localhost:9876/call", json={
 
 ### Token-Saving Mechanism
 
-ChunkForge dramatically reduces token usage through three mechanisms:
+Stele dramatically reduces token usage through three mechanisms:
 
 1. **Instant KV Restoration**: When a document hasn't changed, all its chunks' KV-cache states are loaded instantly. The LLM never needs to re-process these chunks, saving tokens equal to the chunk size × number of unchanged chunks.
 
-2. **Lazy Double-Check**: When a document has changed, ChunkForge compares semantic signatures of each chunk. If a chunk's content changed but its semantic meaning is similar (cosine similarity > 0.85), it's considered "unchanged" and its KV state is restored without LLM re-processing.
+2. **Lazy Double-Check**: When a document has changed, Stele compares semantic signatures of each chunk. If a chunk's content changed but its semantic meaning is similar (cosine similarity > 0.85), it's considered "unchanged" and its KV state is restored without LLM re-processing.
 
 3. **Selective Reprocessing**: Only chunks with significant semantic changes are marked for reprocessing. This means editing a comment or fixing a typo doesn't trigger reprocessing of the entire file.
 
@@ -465,13 +466,13 @@ This creates chunks that are:
 
 KV-cache states are stored as:
 - **Metadata**: SQLite database with chunk info, hashes, signatures
-- **KV Data**: Serialized tensors in `~/.chunkforge/kv_cache/`
+- **KV Data**: Serialized tensors in `~/.stele/kv_cache/`
 - **Sessions**: Track multiple independent contexts with rollback support
 
 Storage format:
 ```
-~/.chunkforge/
-├── chunkforge.db          # SQLite metadata + chunk content
+~/.stele/
+├── stele.db          # SQLite metadata + chunk content
 ├── kv_cache/
 │   └── {session_id}/
 │       ├── {chunk_id}_turn0.kv   # JSON + zlib compressed
@@ -483,7 +484,7 @@ Storage format:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│               ChunkForge Engine (engine.py)               │
+│               Stele Engine (engine.py)               │
 ├──────────────────────────────────────────────────────────┤
 │  index_documents()  │  search()    │  get_context()      │
 │  detect_changes()   │  rollback()  │  save/load state    │
@@ -514,8 +515,8 @@ Storage format:
 
 ### Environment Variables
 
-- `CHUNKFORGE_STORAGE_DIR`: Override default storage directory
-- `CHUNKFORGE_LOG_LEVEL`: Set logging level (DEBUG, INFO, WARNING, ERROR)
+- `STELE_STORAGE_DIR`: Override default storage directory
+- `STELE_LOG_LEVEL`: Set logging level (DEBUG, INFO, WARNING, ERROR)
 
 ### Default Values
 
@@ -533,9 +534,9 @@ Storage format:
 
 ### Token Savings
 
-Typical token savings with ChunkForge:
+Typical token savings with Stele:
 
-| Scenario | Without ChunkForge | With ChunkForge | Savings |
+| Scenario | Without Stele | With Stele | Savings |
 |----------|-------------------|-----------------|---------|
 | Unchanged document | 10,000 tokens | 0 tokens | 100% |
 | Minor edit (typo) | 10,000 tokens | ~100 tokens | 99% |
@@ -547,6 +548,60 @@ Typical token savings with ChunkForge:
 - Metadata: ~1KB per chunk
 - KV-cache: ~10-100KB per chunk (depends on model size)
 - Total: Typically 1-10% of original document size
+
+## Multi-Agent Support
+
+Stele supports multiple LLM agents (e.g. several Claude Code instances) sharing one store on the same machine. This is designed for solo developers running multiple agents locally, not for team collaboration across networks.
+
+### What's Protected
+
+| Layer | Protection |
+|-------|-----------|
+| **Thread safety** | RWLock — concurrent reads, exclusive writes on all engine methods |
+| **Process safety** | `fcntl.flock()` on index files — multiple MCP stdio processes can't corrupt shared indices |
+| **Document ownership** | `acquire_document_lock(path, agent_id)` — other agents can read but not write locked documents |
+| **Optimistic locking** | `doc_version` compare-and-swap — rejects writes if another agent modified the document since you last read it |
+| **Conflict log** | `document_conflicts` table — full audit trail of ownership violations, version conflicts, lock steals |
+| **Expired lock reaping** | `reap_expired_locks()` — cleans up locks from dead agents |
+| **Lock refresh** | `refresh_document_lock(path, agent_id)` — resets TTL during long operations without releasing |
+
+### Multi-Agent Workflow
+
+```python
+from stele import Stele
+
+engine = Stele()
+
+# Agent claims a file before editing
+engine.acquire_document_lock("src/main.py", agent_id="agent-alpha")
+
+# Index with ownership check + optimistic locking
+version = engine.storage.get_document_version("src/main.py")
+result = engine.index_documents(
+    ["src/main.py"],
+    agent_id="agent-alpha",
+    expected_versions={"src/main.py": version},
+)
+
+# Refresh lock during long operations to prevent TTL expiry
+engine.refresh_document_lock("src/main.py", agent_id="agent-alpha")
+
+# Release when done
+engine.release_document_lock("src/main.py", agent_id="agent-alpha")
+
+# Check for conflicts
+conflicts = engine.get_conflicts()
+```
+
+### Design Scope
+
+Stele's multi-agent features are built for **local, single-machine use** — a solo developer running multiple agents on one workstation, all sharing `~/.stele/`. All agents run under the same OS user on the same machine, so the trust boundary is your operating system.
+
+The following are intentionally out of scope (contributions welcome):
+
+- **Distributed locking** — `fcntl.flock()` works on one machine. Multi-machine setups (NFS, networked storage) would need a distributed lock manager.
+- **Auto-merge on conflict** — conflicts are rejected, not auto-merged. The second writer gets a `PermissionError` and must retry. Merge strategies are relevant for team workflows with multiple developers; for solo devs running multiple agents, reject-and-retry is the right behavior.
+- **Pub-sub notifications** — agents discover changes by querying (`detect_changes`, `get_conflicts`), not via push notifications. Polling is sufficient for local use.
 
 ## Limitations
 
@@ -570,4 +625,4 @@ MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-ChunkForge is inspired by the need for efficient long-context LLM interactions in coding agents and development workflows.
+Stele is inspired by the need for efficient long-context LLM interactions in coding agents and development workflows.

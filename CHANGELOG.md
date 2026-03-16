@@ -1,9 +1,40 @@
 # Changelog
 
-All notable changes to ChunkForge will be documented in this file.
+All notable changes to Stele will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.8.0] - 2026-03-16
+
+### Added
+- **Multi-agent support** — Multiple LLM agents can safely share one Stele instance (via HTTP) or use separate MCP stdio processes without data corruption or semantic conflicts.
+- **Read-write lock** (`rwlock.py`) — `RWLock` protects all engine public methods. Read operations (search, get_context, get_stats, etc.) allow concurrent access. Write operations (index_documents, detect_changes, annotate, etc.) get exclusive access. Zero external dependencies (stdlib `threading` only).
+- **Threaded HTTP server** — `ThreadedHTTPServer(ThreadingMixIn, HTTPServer)` handles each request in a new thread. Safe because RWLock protects engine state.
+- **Agent-aware sessions** — `sessions` table gains `agent_id TEXT` column (added via migration). `create_session(id, agent_id=)`, `list_sessions(agent_id=)` for multi-agent tracking. All existing APIs backward-compatible (agent_id defaults to None).
+- **Per-document ownership** — `acquire_document_lock(path, agent_id, ttl=300)` gives exclusive write access. Other agents can read but writes are rejected with `PermissionError`. Locks auto-expire after TTL. `force=True` steals lock and logs a conflict. `release_agent_locks(agent_id)` for bulk cleanup.
+- **Optimistic locking** — `doc_version INTEGER` on documents table, auto-incremented on each write. `index_documents(expected_versions={path: N})` rejects files whose version changed since the caller last read them. Prevents silent overwrites between agents.
+- **Conflict log** — `document_conflicts` table records ownership violations, version conflicts, and lock steals with full audit trail. `get_conflicts(document_path=, agent_id=, limit=)` MCP tool for querying history.
+- **`document_lock_storage.py`** (~270 LOC) — `DocumentLockStorage` delegate following the same pattern as `SessionStorage`, `MetadataStorage`, `SymbolStorage`. Owns lock columns on `documents` and the `document_conflicts` table.
+- **5 new MCP tools** — `acquire_document_lock`, `release_document_lock`, `get_document_lock_status`, `release_agent_locks`, `get_conflicts` (both HTTP and stdio).
+- **`list_sessions` tool** — New MCP tool (HTTP + stdio) to query sessions, optionally filtered by agent_id.
+- **`agent_id` parameter** — Added to `index_documents()`, `detect_changes_and_update()`, `save_kv_state()`, and `remove_document()` for ownership checking.
+- **`expected_versions` parameter** — Added to `index_documents()` for optimistic locking.
+- **Cross-process file locking** — `index_store.py` uses `fcntl.flock()` on `.lock` sidecar files to prevent index corruption when multiple MCP stdio processes share `~/.stele/`. LOCK_EX for writes, LOCK_SH for reads. No-op fallback on Windows.
+- **BM25 double-checked locking** — `_ensure_bm25()` uses a separate `threading.Lock` so concurrent readers don't race during lazy initialization.
+- **`tests/test_concurrency.py`** (12 tests) — RWLock semantics, concurrent searches, write-blocks-read, BM25 lazy-init thread safety, agent_id roundtrip, backward compat, cross-process file locking.
+- **`tests/test_conflicts.py`** (31 tests) — Per-document ownership (acquire, release, expiry, force-steal, ownership blocking), optimistic locking (version increment, stale rejection, CAS), conflict resolution (logging, filtering, pruning), backward compatibility, concurrent races.
+
+### Changed
+- **MCP tools**: HTTP 21 (was 15), stdio 29 (was 23)
+- **`store_document()`** uses `INSERT ... ON CONFLICT DO UPDATE` instead of `INSERT OR REPLACE` to preserve `locked_by`/`doc_version` columns
+- **Version**: 0.7.0 → 0.8.0
+
+### Fixed
+- **Deadlock in `detect_changes_and_update`** — `_detect_changes_unlocked()` called `self.remove_document()` which tried to re-acquire the non-reentrant write lock. Now inlines the removal logic.
+
+### Tests
+- **286 tests passing** (was 243), 1 skipped (MCP SDK not installed)
 
 ## [0.7.0] - 2026-03-16
 
@@ -11,13 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Symbol graph** — Cross-file reference tracking with `find_references`, `find_definition`, `impact_radius`, and `rebuild_symbols` MCP tools. Extracts definitions and references from 12 language families (Python via AST, JS/TS/HTML/CSS/Java/Go/Rust/C/Ruby/PHP via regex). Zero new dependencies.
 - **Cross-language linking** — HTML `class="btn"` → CSS `.btn {}`, JS `querySelector('.btn')` → CSS `.btn {}`, HTML `onclick="fn()"` → JS `function fn()`, JS `getElementById('app')` → HTML `id="app"`.
 - **Directory indexing** — `index_documents()` now accepts directories. Recursively walks with `Path.rglob()`, filters by supported extensions, skips `.git`, `node_modules`, `__pycache__`, `.venv`, hidden dirs.
-- **Configurable skip-dirs** — `ChunkForge(skip_dirs={"vendor", "generated"})` to add project-specific directories to skip during directory indexing. Merges with defaults.
+- **Configurable skip-dirs** — `Stele(skip_dirs={"vendor", "generated"})` to add project-specific directories to skip during directory indexing. Merges with defaults.
 - **Staleness propagation** — When `detect_changes_and_update()` finds modified files, propagates staleness scores through symbol edges to dependents. Score = `0.8^depth` (direct dep = 0.8, transitive = 0.64). New `stale_chunks(threshold)` MCP tool.
 - **Search with edges** — `search()` results now include `edges.depends_on` and `edges.depended_on_by` for each chunk, showing symbol connections without extra round-trips.
 - **Module path resolution** — `from pkg.utils import helper` now prefers `helper` defined in `pkg/utils.py` over an unrelated `helper` in another file. Reduces false edges in multi-project indexes.
 - **Symbol re-extraction on change** — `detect_changes_and_update()` re-extracts symbols and rebuilds edges for modified documents, keeping the graph in sync.
-- **`chunkforge/symbols.py`** (~530 LOC) — `SymbolExtractor` class, `resolve_symbols()` with module path hints, `_module_matches_path()` helper.
-- **`chunkforge/symbol_storage.py`** (~200 LOC) — `SymbolStorage` delegate; `symbols` and `symbol_edges` SQLite tables with indexed queries.
+- **`stele/symbols.py`** (~530 LOC) — `SymbolExtractor` class, `resolve_symbols()` with module path hints, `_module_matches_path()` helper.
+- **`stele/symbol_storage.py`** (~200 LOC) — `SymbolStorage` delegate; `symbols` and `symbol_edges` SQLite tables with indexed queries.
 - **`tests/test_symbols.py`** (63 tests) — Symbol extraction, cross-language resolution, storage, engine integration, directory indexing, staleness, search-with-edges, skip-dirs, module path resolution.
 - `staleness_score REAL DEFAULT 0.0` column on chunks table (added via migration).
 - **Noise filter** — `_NOISE_REFS` frozenset (~60 entries) filters Python builtins, dunder methods, JS globals, and ambiguous method names (get, set, push, etc.) from symbol resolution. Reduces false edges by ~14% without losing real cross-file connections.
@@ -37,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Hybrid search (BM25 + HNSW)** — `search()` widens HNSW to 3x candidates and re-ranks with BM25 keyword scores. Blend controlled by `search_alpha` (default 0.7). BM25 index lazily initialized on first search, persisted alongside HNSW.
-- **`chunkforge/bm25.py`** — Pure-Python Okapi BM25 keyword index with zero dependencies. Includes `to_dict()`/`from_dict()` for persistence.
+- **`stele/bm25.py`** — Pure-Python Okapi BM25 keyword index with zero dependencies. Includes `to_dict()`/`from_dict()` for persistence.
 - **BM25 persistence** — BM25 index serialized to `indices/bm25_index.json.zlib` with same staleness detection as HNSW. Loaded from disk on first search instead of rebuilding from SQLite.
 - **Search alpha auto-tuning** — `_compute_search_alpha()` detects code-like queries (identifiers, brackets, keywords) and lowers alpha to weight keyword matching more heavily.
 - **Per-modality thresholds** — `MODALITY_THRESHOLDS` dict: code uses merge=0.85 (preserves AST boundaries) and change=0.80 (tolerates incremental edits); text and PDF keep existing defaults
@@ -121,7 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.2] - 2026-03-13
 
 ### Added
-- **Persistent HNSW index serialization** — index saved to `~/.chunkforge/indices/hnsw_index.json.zlib` after indexing or change detection. Loaded on startup if fresh (chunk IDs hash matches), otherwise rebuilt from SQLite. Eliminates redundant O(n) rebuild on every startup.
+- **Persistent HNSW index serialization** — index saved to `~/.stele/indices/hnsw_index.json.zlib` after indexing or change detection. Loaded on startup if fresh (chunk IDs hash matches), otherwise rebuilt from SQLite. Eliminates redundant O(n) rebuild on every startup.
 - **`to_dict()`/`from_dict()` on `HNSWIndex` and `VectorIndex`** — serialization methods for round-tripping the full graph structure
 - **`index_store.py` module** — `save_index()`, `load_index()`, `load_if_fresh()`, `compute_chunk_ids_hash()` functions for persistent index management
 - **14 new tests** in `test_index_store.py` — round-trip serialization, staleness detection, corrupt file handling, search-after-reload integration
@@ -156,27 +187,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-03-13
 
 ### Added
-- **New engine module** (`engine.py`): Main ChunkForge class now routes documents through modality-specific chunkers and wires in the HNSW vector index
+- **New engine module** (`engine.py`): Main Stele class now routes documents through modality-specific chunkers and wires in the HNSW vector index
 - **Semantic search API** (`search(query, top_k)`): Returns chunk content + metadata ranked by HNSW similarity
 - **Context cache API** (`get_context(document_paths)`): Returns cached chunk content for unchanged files, flags changed/new docs
 - **Real MCP server** (`mcp_stdio.py`): JSON-RPC over stdio, compatible with Claude Desktop and MCP clients
 - **`serve-mcp` CLI command**: Start stdio MCP server
-- **`search` CLI command**: `chunkforge search "query" --top-k 10`
+- **`search` CLI command**: `stele search "query" --top-k 10`
 - **SessionManager** (`session.py`): High-level session operations with HNSW-accelerated retrieval
 - **SessionStorage** (`session_storage.py`): Extracted session operations from storage.py
 - **numpy_compat module** (`chunkers/numpy_compat.py`): Shared numpy fallback + `cosine_similarity()` helper
 - **Chunk content storage**: SQLite `chunks` table now has `content TEXT` column; chunk text retrievable without re-reading files
 - **`get_chunk_content()`** and **`search_chunks()`** methods on StorageBackend
-- **`save_state`/`load_state` aliases** on ChunkForge (clearer naming alongside existing `save_kv_state`)
-- **MCP SDK optional dependency**: `pip install chunkforge[mcp]`
-- **`chunkforge-mcp` entry point**: Direct entry point for MCP stdio server
+- **`save_state`/`load_state` aliases** on Stele (clearer naming alongside existing `save_kv_state`)
+- **MCP SDK optional dependency**: `pip install stele[mcp]`
+- **`stele-mcp` entry point**: Direct entry point for MCP stdio server
 - **4 new test files**: `test_engine.py`, `test_session.py`, `test_mcp_stdio.py`, `test_storage_migration.py`
 
 ### Changed
 - **Chunker routing in engine**: `index_documents()` now routes through CodeChunker for `.py`/`.js` etc., TextChunker for `.txt`/`.md`, instead of reimplementing paragraph splitting inline
 - **HNSW index wired in**: Vector index populated on startup from SQLite, used for `search()`, `get_relevant_kv()`, and change detection
 - **Unified Chunk class**: Single `Chunk` from `chunkers.base` with rich 128-dim semantic signatures (trigrams, word frequencies, structural features) — replaces the two incompatible Chunk classes
-- **core.py is now a shim**: Re-exports `ChunkForge` from `engine` and `Chunk` from `chunkers.base` for backward compat
+- **core.py is now a shim**: Re-exports `Stele` from `engine` and `Chunk` from `chunkers.base` for backward compat
 - **JSON replaces pickle**: Session storage uses `json.dumps()` + `zlib.compress()` instead of pickle (security improvement for agent-facing tools)
 - **Storage migration**: `_migrate_database()` adds `content` column via `ALTER TABLE ADD COLUMN` (preserves existing data)
 - **Terminology**: Docstrings and module descriptions reframed as "context cache" not "KV-cache tensors"
@@ -196,14 +227,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.1] - 2026-03-13
 
 ### Fixed
-- **Optional dependency detection** - `HAS_IMAGE_CHUNKER`, `HAS_PDF_CHUNKER`, `HAS_AUDIO_CHUNKER`, `HAS_VIDEO_CHUNKER` flags now correctly check whether the underlying library (Pillow, pymupdf, librosa, opencv) is installed, not just whether the chunker module imported. Previously, `ChunkForge()` would crash with `ImportError` when optional deps were missing.
+- **Optional dependency detection** - `HAS_IMAGE_CHUNKER`, `HAS_PDF_CHUNKER`, `HAS_AUDIO_CHUNKER`, `HAS_VIDEO_CHUNKER` flags now correctly check whether the underlying library (Pillow, pymupdf, librosa, opencv) is installed, not just whether the chunker module imported. Previously, `Stele()` would crash with `ImportError` when optional deps were missing.
 - **msgspec guard in storage** - `store_kv_state()` and `load_kv_state()` now check `HAS_MSGSPEC` before calling `msgspec` methods. Previously crashed with `AttributeError` when msgspec was not installed.
 - **Test version assertion** - `test_get_stats` expected version `"0.1.0"` instead of `"0.4.0"`.
 - **README line count** - Updated codebase size from ~2,000 to ~4,800 lines.
 
 ### Removed
 - **Dead chunk subclasses** - Removed `TextChunk`, `PDFChunk`, `ImageChunk`, `AudioChunk`, `VideoChunk` classes (never imported or instantiated anywhere).
-- **Unused methods** - Removed `ChunkForge.get_chunker()` and `BaseChunker.read_file()` (defined but never called).
+- **Unused methods** - Removed `Stele.get_chunker()` and `BaseChunker.read_file()` (defined but never called).
 - **Unused imports** - Removed `import io` from video.py, unused `Optional`, `Counter`, `Tuple` type imports across chunker modules.
 
 ### Changed
@@ -266,7 +297,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lazy imports for optional dependencies (graceful fallback if not installed)
 
 ### Changed
-- Core ChunkForge class now initializes and manages multiple chunkers
+- Core Stele class now initializes and manages multiple chunkers
 - `index_documents()` automatically selects appropriate chunker based on file type
 - `detect_modality()` method to identify file type
 - README updated with multi-modal documentation and supported formats
@@ -297,7 +328,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-03-12
 
 ### Added
-- Initial release of ChunkForge
+- Initial release of Stele
 - Dynamic semantic chunking with intelligent merging
 - Hybrid indexing (SHA-256 hashes + semantic signatures)
 - Change detection with lazy double-check
@@ -336,7 +367,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `prune_chunks(session_id, max_tokens)` - Prune low-relevance chunks
 
 ### Storage
-- Location: `~/.chunkforge/` (configurable)
+- Location: `~/.stele/` (configurable)
 - Database: SQLite with WAL mode
 - KV-cache: Serialized tensors in session directories
 - Metadata: Chunks, documents, sessions, session-chunks
@@ -360,6 +391,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 0.8.0 | 2026-03-16 | Multi-agent support: RWLock, threaded HTTP, document ownership, optimistic locking, conflict resolution |
 | 0.7.0 | 2026-03-16 | Symbol graph, cross-file references, directory indexing, staleness detection, search-with-edges |
 | 0.6.0 | 2026-03-15 | Hybrid search, BPE tokens, adaptive HNSW, per-modality thresholds, binary handling |
 | 0.5.4 | 2026-03-13 | Codebase audit: bug fixes, dead code removal, deduplication, dynamic versioning |
@@ -393,10 +425,10 @@ This is the initial release, no upgrade needed.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for information on how to contribute to ChunkForge.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for information on how to contribute to Stele.
 
 ---
 
 ## License
 
-ChunkForge is released under the MIT License. See [LICENSE](LICENSE) for details.
+Stele is released under the MIT License. See [LICENSE](LICENSE) for details.

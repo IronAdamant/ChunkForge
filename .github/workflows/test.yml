@@ -28,7 +28,7 @@ jobs:
 
     - name: Run tests
       run: |
-        pytest --cov=chunkforge --cov-report=xml --cov-report=term-missing
+        pytest --cov=stele --cov-report=xml --cov-report=term-missing
 
     - name: Upload coverage
       if: matrix.python-version == '3.12'
@@ -55,7 +55,7 @@ jobs:
 
     - name: Run mypy
       run: |
-        mypy chunkforge/ --ignore-missing-imports
+        mypy stele/ --ignore-missing-imports
 
   lint:
     runs-on: ubuntu-latest
@@ -74,5 +74,5 @@ jobs:
 
     - name: Run ruff
       run: |
-        ruff check chunkforge/ tests/
-        ruff format --check chunkforge/ tests/
+        ruff check stele/ tests/
+        ruff format --check stele/ tests/

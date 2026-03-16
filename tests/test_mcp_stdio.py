@@ -1,10 +1,10 @@
-"""Tests for ChunkForge MCP stdio server."""
+"""Tests for Stele MCP stdio server."""
 
 import pytest
 
-from chunkforge import __version__
-from chunkforge.engine import ChunkForge
-from chunkforge.mcp_stdio import HAS_MCP
+from stele import __version__
+from stele.engine import Stele
+from stele.mcp_stdio import HAS_MCP
 
 
 class TestMCPStdioServer:
@@ -16,22 +16,22 @@ class TestMCPStdioServer:
 
     def test_create_engine(self, tmp_path):
         """Test engine creation helper."""
-        from chunkforge.mcp_stdio import _create_engine
+        from stele.mcp_stdio import _create_engine
 
         engine = _create_engine(str(tmp_path / "storage"))
-        assert isinstance(engine, ChunkForge)
+        assert isinstance(engine, Stele)
 
     @pytest.mark.skipif(not HAS_MCP, reason="MCP SDK not installed")
     def test_create_server(self, tmp_path):
         """Test server creation with tool registration."""
-        from chunkforge.mcp_stdio import create_server
+        from stele.mcp_stdio import create_server
 
         server = create_server(str(tmp_path / "storage"))
         assert server is not None
 
     def test_main_without_mcp_exits(self, tmp_path):
         """Test that main() exits gracefully without MCP SDK."""
-        from chunkforge import mcp_stdio
+        from stele import mcp_stdio
 
         if mcp_stdio.HAS_MCP:
             pytest.skip("MCP SDK is installed")
@@ -48,7 +48,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         result = engine.index_documents(
             paths=[str(test_file)],
             force_reindex=False,
@@ -62,7 +62,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def add(a, b): return a + b")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
 
         result = engine.search(query="add function", top_k=5)
@@ -74,7 +74,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello world")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
 
         result = engine.get_context([str(test_file)])
@@ -82,7 +82,7 @@ class TestMCPStdioIntegration:
 
     def test_stats_tool_logic(self, tmp_path):
         """Test stats tool execution logic."""
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         result = engine.get_stats()
 
         assert "version" in result
@@ -94,7 +94,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
 
         result = engine.annotate(str(test_file), "document", "Main module")
@@ -105,7 +105,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
         engine.annotate(str(test_file), "document", "Note", tags=["arch"])
 
@@ -117,7 +117,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
         ann = engine.annotate(str(test_file), "document", "Delete me")
 
@@ -129,7 +129,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
 
         result = engine.get_map()
@@ -141,7 +141,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
         engine.detect_changes_and_update("s1", [str(test_file)], reason="test")
 
@@ -154,7 +154,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
 
         result = engine.detect_changes_and_update(
@@ -170,7 +170,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
         ann = engine.annotate(str(test_file), "document", "Old text")
 
@@ -182,7 +182,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
         engine.annotate(str(test_file), "document", "Auth handler")
 
@@ -196,7 +196,7 @@ class TestMCPStdioIntegration:
         f2 = tmp_path / "b.py"
         f2.write_text("def b(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(f1), str(f2)])
 
         result = engine.bulk_annotate([
@@ -210,7 +210,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
         for i in range(3):
             engine.detect_changes_and_update(f"s{i}", [str(test_file)])
@@ -223,7 +223,7 @@ class TestMCPStdioIntegration:
         test_file = tmp_path / "test.py"
         test_file.write_text("def hello(): pass")
 
-        engine = ChunkForge(storage_dir=str(tmp_path / "storage"))
+        engine = Stele(storage_dir=str(tmp_path / "storage"))
         engine.index_documents([str(test_file)])
 
         result = engine.remove_document(str(test_file))
