@@ -27,6 +27,8 @@ ChunkForge helps LLM agents avoid re-reading unchanged files by caching chunk da
 - **Symbol Graph**: Cross-file reference tracking — `find_references`, `find_definition`, `impact_radius`
 - **Cross-Language Linking**: HTML `class="btn"` → CSS `.btn {}`, JS `querySelector('.btn')` → CSS, `onclick="fn()"` → JS
 - **Impact Analysis**: "What breaks if I change this?" — BFS over symbol edges with configurable depth
+- **Staleness Detection**: Automatic context rot detection — when dependencies change, dependents get flagged with decay scores
+- **Directory Indexing**: Pass a directory to `index_documents()` — recursively walks, filters by extension, skips `.git`/`node_modules`/hidden dirs
 - **Annotations**: Attach metadata notes to documents and chunks for LLM navigation
 - **Project Map**: `map` tool returns all documents with chunk counts, tokens, and annotations
 - **Change History**: Automatic recording of change detection results with optional reasons
@@ -261,6 +263,14 @@ for c in impact["chunks"]:
 # Rebuild symbol graph (after upgrade or to repair)
 result = cf.rebuild_symbol_graph()
 print(f"{result['symbols']} symbols, {result['edges']} edges")
+
+# Staleness detection — find chunks whose dependencies changed
+stale = cf.stale_chunks(threshold=0.3)
+for doc in stale["by_document"]:
+    print(f"{doc['path']}: {len(doc['chunks'])} stale chunks")
+
+# Index entire directories (recursively, auto-filters by extension)
+cf.index_documents(["src/", "tests/"])
 
 # Session management
 cf.save_kv_state("my-session", {"chunk_id": {"key": "value"}})
