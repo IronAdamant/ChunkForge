@@ -3,6 +3,7 @@ Stele engine — smart context cache with semantic chunking and vector search.
 """
 
 import hashlib
+import os
 import re
 import threading
 from collections import deque
@@ -81,6 +82,7 @@ class Stele:
     def __init__(
         self,
         storage_dir: Optional[str] = None,
+        project_root: Optional[str] = None,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE,
         merge_threshold: float = DEFAULT_MERGE_THRESHOLD,
@@ -88,6 +90,11 @@ class Stele:
         search_alpha: float = DEFAULT_SEARCH_ALPHA,
         skip_dirs: Optional[set] = None,
     ):
+        self._project_root = self._detect_project_root(project_root)
+        if storage_dir is None:
+            storage_dir = os.environ.get("STELE_STORAGE_DIR")
+        if storage_dir is None and self._project_root is not None:
+            storage_dir = str(self._project_root / ".stele")
         self.storage = StorageBackend(storage_dir)
         self.chunk_size = chunk_size
         self.max_chunk_size = max_chunk_size
@@ -103,6 +110,59 @@ class Stele:
         self._symbol_extractor = SymbolExtractor()
         self._lock = RWLock()
         self._bm25_init_lock = threading.Lock()
+
+    @staticmethod
+    def _detect_project_root(
+        explicit: Optional[str] = None,
+    ) -> Optional[Path]:
+        """Detect project root by walking up from CWD looking for .git.
+
+        Works with both normal repos (.git directory) and worktrees
+        (.git file).  Returns None if no .git is found, which disables
+        path normalization and falls back to ~/.stele/ for storage.
+        """
+        if explicit is not None:
+            return Path(explicit).resolve()
+        cwd = Path.cwd().resolve()
+        for parent in [cwd] + list(cwd.parents):
+            if (parent / ".git").exists():
+                return parent
+        return None
+
+    def _normalize_path(self, path: str) -> str:
+        """Convert a path to project-relative if within the project root.
+
+        Absolute paths are resolved and made relative to the project root.
+        Relative paths are resolved against the project root (not CWD),
+        ensuring idempotent normalization — calling this on an already-
+        normalized path returns the same result.
+        """
+        p = Path(path)
+        if self._project_root is not None:
+            if p.is_absolute():
+                try:
+                    return str(p.resolve().relative_to(self._project_root))
+                except ValueError:
+                    pass
+            else:
+                # Relative path — resolve against project root, not CWD
+                resolved = (self._project_root / p).resolve()
+                try:
+                    return str(resolved.relative_to(self._project_root))
+                except ValueError:
+                    pass
+        return str(p.resolve())
+
+    def _resolve_path(self, normalized: str) -> Path:
+        """Convert a normalized path back to absolute for file I/O.
+
+        Relative paths are joined against the project root.
+        Absolute paths are returned as-is.
+        """
+        p = Path(normalized)
+        if not p.is_absolute() and self._project_root is not None:
+            return self._project_root / p
+        return p
 
     def _init_chunkers(self) -> None:
         """Initialize modality-specific chunkers."""
@@ -318,6 +378,9 @@ class Stele:
         Directories are walked recursively; only files with supported
         extensions are included.  Hidden directories (starting with '.')
         and directories in ``self.skip_dirs`` are skipped.
+
+        All returned paths are normalized via ``_normalize_path`` so that
+        they are project-relative when a project root is set.
         """
         supported: set = set()
         for chunker in self.chunkers.values():
@@ -327,7 +390,7 @@ class Stele:
         for path_str in paths:
             p = Path(path_str)
             if p.is_file():
-                expanded.append(str(p))
+                expanded.append(self._normalize_path(str(p)))
             elif p.is_dir():
                 for child in sorted(p.rglob("*")):
                     if any(part in self.skip_dirs for part in child.parts):
@@ -335,16 +398,21 @@ class Stele:
                     if any(part.startswith(".") for part in child.relative_to(p).parts):
                         continue
                     if child.is_file() and child.suffix.lower() in supported:
-                        expanded.append(str(child))
+                        expanded.append(self._normalize_path(str(child)))
             else:
-                expanded.append(path_str)
+                expanded.append(self._normalize_path(path_str))
         return expanded
 
     def _chunk_and_store(
-        self, path: Path, content: Any, content_hash: str, modality: str,
+        self, abs_path: Path, doc_path: str,
+        content: Any, content_hash: str, modality: str,
     ) -> list:
-        """Chunk a single file, persist chunks, extract symbols, return Chunk list."""
-        doc_path = str(path)
+        """Chunk a single file, persist chunks, extract symbols, return Chunk list.
+
+        Args:
+            abs_path: Absolute filesystem path (for stat/mtime).
+            doc_path: Normalized path used as the storage key.
+        """
         existing_doc = self.storage.get_document(doc_path)
 
         # Build signature cache from old chunks (skip recomputation)
@@ -380,7 +448,7 @@ class Stele:
             document_path=doc_path,
             content_hash=content_hash,
             chunk_count=len(chunks),
-            last_modified=path.stat().st_mtime,
+            last_modified=abs_path.stat().st_mtime,
         )
         return chunks
 
@@ -417,6 +485,12 @@ class Stele:
     ) -> Dict[str, Any]:
         paths = self._expand_paths(paths)
 
+        if expected_versions:
+            expected_versions = {
+                self._normalize_path(k): v
+                for k, v in expected_versions.items()
+            }
+
         results: Dict[str, Any] = {
             "indexed": [],
             "skipped": [],
@@ -426,29 +500,38 @@ class Stele:
             "total_tokens": 0,
         }
 
-        for path_str in paths:
-            path = Path(path_str)
+        for norm_path in paths:
+            abs_path = self._resolve_path(norm_path)
 
-            if not path.exists():
-                results["errors"].append({"path": path_str, "error": "File not found"})
+            if not abs_path.exists():
+                results["errors"].append({"path": norm_path, "error": "File not found"})
                 continue
-            if not path.is_file():
-                results["errors"].append({"path": path_str, "error": "Not a file"})
+            if not abs_path.is_file():
+                results["errors"].append({"path": norm_path, "error": "Not a file"})
                 continue
 
             try:
-                # Ownership check
-                self._check_document_ownership(path_str, agent_id)
+                # Ownership check (raises if locked by another agent)
+                self._check_document_ownership(norm_path, agent_id)
+
+                # Auto-acquire lock when agent_id is set and doc exists unlocked
+                existing_doc = self.storage.get_document(norm_path)
+                if agent_id and existing_doc:
+                    status = self.storage.get_document_lock_status(norm_path)
+                    if not status.get("locked"):
+                        self.storage.acquire_document_lock(
+                            norm_path, agent_id,
+                        )
 
                 # Optimistic version check
-                if expected_versions and path_str in expected_versions:
+                if expected_versions and norm_path in expected_versions:
                     ver_result = self.storage.check_and_increment_doc_version(
-                        path_str, expected_versions[path_str]
+                        norm_path, expected_versions[norm_path]
                     )
                     if not ver_result.get("success"):
                         if agent_id:
                             self.storage.record_conflict(
-                                document_path=path_str,
+                                document_path=norm_path,
                                 agent_a="unknown",
                                 agent_b=agent_id,
                                 conflict_type="version_conflict",
@@ -456,38 +539,43 @@ class Stele:
                                 actual_version=ver_result.get("actual"),
                             )
                         results["conflicts"].append({
-                            "path": path_str,
+                            "path": norm_path,
                             "reason": "version_conflict",
                             **ver_result,
                         })
                         continue
 
-                modality = self.detect_modality(str(path))
+                modality = self.detect_modality(str(abs_path))
                 content: Any
-                content, content_hash = _read_and_hash(path, modality)
+                content, content_hash = _read_and_hash(abs_path, modality)
 
-                existing_doc = self.storage.get_document(str(path))
                 if existing_doc and not force_reindex:
                     if existing_doc["content_hash"] == content_hash:
                         results["skipped"].append(
                             {
-                                "path": path_str,
+                                "path": norm_path,
                                 "reason": "Unchanged",
                                 "chunk_count": existing_doc["chunk_count"],
                             }
                         )
                         continue
 
-                chunks = self._chunk_and_store(path, content, content_hash, modality)
+                chunks = self._chunk_and_store(
+                    abs_path, norm_path, content, content_hash, modality,
+                )
+
+                # Auto-acquire lock on newly-created documents
+                if agent_id and not existing_doc:
+                    self.storage.acquire_document_lock(norm_path, agent_id)
 
                 # Increment version (if not already done by optimistic check)
-                if not (expected_versions and path_str in expected_versions):
-                    self.storage.increment_doc_version(path_str)
+                if not (expected_versions and norm_path in expected_versions):
+                    self.storage.increment_doc_version(norm_path)
 
                 total_tokens = sum(c.token_count for c in chunks)
                 results["indexed"].append(
                     {
-                        "path": path_str,
+                        "path": norm_path,
                         "chunk_count": len(chunks),
                         "total_tokens": total_tokens,
                         "modality": modality,
@@ -497,9 +585,9 @@ class Stele:
                 results["total_tokens"] += total_tokens
 
             except PermissionError as e:
-                results["conflicts"].append({"path": path_str, "error": str(e)})
+                results["conflicts"].append({"path": norm_path, "error": str(e)})
             except Exception as e:
-                results["errors"].append({"path": path_str, "error": str(e)})
+                results["errors"].append({"path": norm_path, "error": str(e)})
 
         if results["indexed"]:
             self._save_index()
@@ -517,6 +605,7 @@ class Stele:
     ) -> Dict[str, Any]:
         """Remove a document and all its chunks, annotations, and index entries."""
         with self._lock.write_lock():
+            document_path = self._normalize_path(document_path)
             self._check_document_ownership(document_path, agent_id)
             result = self.storage.remove_document(document_path)
             if result.get("removed"):
@@ -594,6 +683,8 @@ class Stele:
     ) -> Dict[str, Any]:
         """Add an annotation to a document or chunk."""
         with self._lock.write_lock():
+            if target_type == "document":
+                target = self._normalize_path(target)
             if target_type not in ("document", "chunk"):
                 return {"error": "target_type must be 'document' or 'chunk'"}
 
@@ -617,6 +708,8 @@ class Stele:
     ) -> List[Dict[str, Any]]:
         """Retrieve filtered annotations."""
         with self._lock.read_lock():
+            if target is not None and target_type == "document":
+                target = self._normalize_path(target)
             return self.storage.get_annotations(target, target_type, tags)
 
     def delete_annotation(self, annotation_id: int) -> Dict[str, Any]:
@@ -672,6 +765,8 @@ class Stele:
         tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Internal annotate without lock (for use inside write_lock)."""
+        if target_type == "document":
+            target = self._normalize_path(target)
         if target_type not in ("document", "chunk"):
             return {"error": "target_type must be 'document' or 'chunk'"}
         if target_type == "document":
@@ -738,6 +833,8 @@ class Stele:
     ) -> List[Dict[str, Any]]:
         """Get change history entries."""
         with self._lock.read_lock():
+            if document_path is not None:
+                document_path = self._normalize_path(document_path)
             return self.storage.get_change_history(limit, document_path)
 
     def _classify_chunks_for_change(
@@ -818,13 +915,15 @@ class Stele:
         if document_paths is None:
             all_chunks = self.storage.search_chunks()
             document_paths = list({c["document_path"] for c in all_chunks})
+        else:
+            document_paths = [self._normalize_path(p) for p in document_paths]
 
         session = self.storage.get_session(session_id)
 
         for doc_path in document_paths:
-            path = Path(doc_path)
+            abs_path = self._resolve_path(doc_path)
 
-            if not path.exists():
+            if not abs_path.exists():
                 results["removed"].append(doc_path)
                 # Inline removal to avoid re-acquiring write lock
                 rm_result = self.storage.remove_document(doc_path)
@@ -842,9 +941,9 @@ class Stele:
                 continue
 
             try:
-                modality = self.detect_modality(doc_path)
+                modality = self.detect_modality(str(abs_path))
                 content: Any
-                content, content_hash = _read_and_hash(path, modality)
+                content, content_hash = _read_and_hash(abs_path, modality)
             except Exception:
                 results["modified"].append({"path": doc_path, "reason": "Read error"})
                 continue
@@ -904,7 +1003,7 @@ class Stele:
                     document_path=doc_path,
                     content_hash=content_hash,
                     chunk_count=len(new_chunks),
-                    last_modified=path.stat().st_mtime,
+                    last_modified=abs_path.stat().st_mtime,
                 )
                 self.storage.increment_doc_version(doc_path)
 
@@ -1055,6 +1154,8 @@ class Stele:
         self,
         document_paths: List[str],
     ) -> Dict[str, Any]:
+        document_paths = [self._normalize_path(p) for p in document_paths]
+
         result: Dict[str, Any] = {
             "unchanged": [],
             "changed": [],
@@ -1062,9 +1163,9 @@ class Stele:
         }
 
         for doc_path in document_paths:
-            path = Path(doc_path)
+            abs_path = self._resolve_path(doc_path)
 
-            if not path.exists():
+            if not abs_path.exists():
                 continue
 
             stored_doc = self.storage.get_document(doc_path)
@@ -1073,8 +1174,8 @@ class Stele:
                 continue
 
             try:
-                modality = self.detect_modality(doc_path)
-                _, content_hash = _read_and_hash(path, modality)
+                modality = self.detect_modality(str(abs_path))
+                _, content_hash = _read_and_hash(abs_path, modality)
             except Exception:
                 result["changed"].append({"path": doc_path, "reason": "Read error"})
                 continue
@@ -1509,6 +1610,7 @@ class Stele:
     ) -> Dict[str, Any]:
         """Acquire exclusive write ownership of a document."""
         with self._lock.write_lock():
+            document_path = self._normalize_path(document_path)
             return self.storage.acquire_document_lock(
                 document_path, agent_id, ttl, force
             )
@@ -1521,6 +1623,7 @@ class Stele:
     ) -> Dict[str, Any]:
         """Refresh lock TTL without releasing."""
         with self._lock.write_lock():
+            document_path = self._normalize_path(document_path)
             return self.storage.refresh_document_lock(
                 document_path, agent_id, ttl
             )
@@ -1530,11 +1633,13 @@ class Stele:
     ) -> Dict[str, Any]:
         """Release ownership of a document."""
         with self._lock.write_lock():
+            document_path = self._normalize_path(document_path)
             return self.storage.release_document_lock(document_path, agent_id)
 
     def get_document_lock_status(self, document_path: str) -> Dict[str, Any]:
         """Check lock status of a document."""
         with self._lock.read_lock():
+            document_path = self._normalize_path(document_path)
             return self.storage.get_document_lock_status(document_path)
 
     def release_agent_locks(self, agent_id: str) -> Dict[str, Any]:
@@ -1555,4 +1660,6 @@ class Stele:
     ) -> List[Dict[str, Any]]:
         """Get conflict history."""
         with self._lock.read_lock():
+            if document_path is not None:
+                document_path = self._normalize_path(document_path)
             return self.storage.get_conflicts(document_path, agent_id, limit)

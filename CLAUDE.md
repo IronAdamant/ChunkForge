@@ -31,7 +31,10 @@ Conflict prevention:
   |-- DocumentLockStorage (document_lock_storage.py) -- ownership + versioning
   |-- Per-document locks (acquire/release/force-steal with TTL expiry)
   |-- Optimistic locking (doc_version compare-and-swap)
-  \-- Conflict log (document_conflicts table, audit trail)
+  |-- Conflict log (document_conflicts table, audit trail)
+  |-- Project-root detection + path normalization (worktree safety)
+  |-- Auto-lock acquisition when agent_id is set
+  \-- MCP server auto agent_id injection
 
 Backward compat: core.py re-exports Stele + Chunk
 ```
@@ -67,6 +70,11 @@ Backward compat: core.py re-exports Stele + Chunk
 - **Optimistic locking**: `doc_version INTEGER` on documents table, auto-incremented on each write. `index_documents(expected_versions={path: N})` rejects if version changed since last read. Prevents silent overwrites.
 - **Conflict log**: `document_conflicts` table records ownership violations, version conflicts, and lock steals with full audit trail. `get_conflicts(document_path=, agent_id=)` for querying.
 - **Store document upsert**: `store_document()` uses `INSERT ... ON CONFLICT DO UPDATE` instead of `INSERT OR REPLACE` to preserve `locked_by`/`doc_version` columns.
+- **Project-root detection**: `_detect_project_root()` walks up from CWD looking for `.git` (file or dir). Works with both normal repos and git worktrees. Returns `None` if no `.git` found (disables normalization, falls back to `~/.stele/`).
+- **Path normalization**: `_normalize_path()` converts absolute paths to project-relative. Relative paths resolve against project root (not CWD) for idempotent normalization. Paths outside the project root stay absolute. Applied at every engine public method boundary.
+- **Per-worktree storage isolation**: Default storage is `<project_root>/.stele/` (not `~/.stele/`). Each git worktree gets its own `.stele/` directory since worktrees have separate directory trees. Priority: explicit `storage_dir` > `STELE_STORAGE_DIR` env var > `<project_root>/.stele/` > `~/.stele/`.
+- **Auto-lock acquisition**: When `agent_id` is passed to `index_documents()`, locks are auto-acquired on all documents being indexed. New docs get locked after creation; existing unlocked docs get locked before write. Locks persist after indexing (agent must explicitly release).
+- **MCP server auto agent_id**: Both HTTP (`mcp_server.py`) and stdio (`mcp_stdio.py`) servers generate a unique agent_id (`stele-http-{pid}` / `stele-mcp-{pid}`) and inject it into write operations when the caller doesn't provide one. Ensures all MCP-driven writes are attributed and locked.
 
 ## SQLite Tables
 

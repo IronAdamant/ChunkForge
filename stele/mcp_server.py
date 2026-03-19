@@ -13,6 +13,7 @@ Supports multi-modal content: text, code, images, PDFs, audio, video.
 
 import json
 import logging
+import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
@@ -431,12 +432,26 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
 }
 
 
+# Write tools that should receive a default agent_id when callers omit it.
+_WRITE_TOOLS = frozenset({
+    "index_documents",
+    "detect_changes_and_update",
+    "save_kv_state",
+})
+
+
 class MCPRequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler for MCP server."""
 
-    def __init__(self, *args: Any, stele: Stele, **kwargs: Any):
-        """Initialize with Stele instance."""
+    def __init__(
+        self, *args: Any,
+        stele: Stele,
+        server_agent_id: str = "",
+        **kwargs: Any,
+    ):
+        """Initialize with Stele instance and server agent ID."""
         self.stele = stele
+        self._server_agent_id = server_agent_id
         super().__init__(*args, **kwargs)
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -570,6 +585,14 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
         self, tool_name: str, parameters: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Execute a Stele tool by name."""
+        # Inject server agent_id for write operations when not provided
+        if (
+            tool_name in _WRITE_TOOLS
+            and "agent_id" not in parameters
+            and self._server_agent_id
+        ):
+            parameters = {**parameters, "agent_id": self._server_agent_id}
+
         tool_map = self._get_tool_map()
 
         if tool_name not in tool_map:
@@ -621,17 +644,22 @@ class MCPServer:
         stele: Stele,
         host: str = "localhost",
         port: int = 9876,
+        agent_id: Optional[str] = None,
     ):
         self.stele = stele
         self.host = host
         self.port = port
+        self.agent_id = agent_id or f"stele-http-{os.getpid()}"
         self.server: Optional[HTTPServer] = None
         self._thread: Optional[threading.Thread] = None
 
     def start(self, blocking: bool = False) -> None:
         """Start the MCP server."""
         def handler_factory(*args: Any, **kwargs: Any) -> MCPRequestHandler:
-            return MCPRequestHandler(*args, stele=self.stele, **kwargs)
+            return MCPRequestHandler(
+                *args, stele=self.stele,
+                server_agent_id=self.agent_id, **kwargs,
+            )
 
         self.server = ThreadedHTTPServer((self.host, self.port), handler_factory)
 

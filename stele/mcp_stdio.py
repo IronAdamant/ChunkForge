@@ -18,6 +18,7 @@ Claude Desktop config:
 import asyncio
 import json
 import logging
+import os
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -62,6 +63,10 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
 
     engine = _create_engine(storage_dir)
     server = Server("stele")
+    server_agent_id = f"stele-mcp-{os.getpid()}"
+
+    # Write tools that should receive a default agent_id
+    _WRITE_TOOLS = frozenset({"index", "detect_changes", "remove"})
 
     @server.list_tools()
     async def list_tools() -> List[Tool]:
@@ -562,6 +567,10 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
     @server.call_tool()
     async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         try:
+            # Inject server agent_id for write operations when not provided
+            if name in _WRITE_TOOLS and "agent_id" not in arguments:
+                arguments = {**arguments, "agent_id": server_agent_id}
+
             if name == "index":
                 result = engine.index_documents(
                     paths=arguments["paths"],
