@@ -673,6 +673,10 @@ class Stele:
                         self.bm25_index.remove_document(chunk_id)
                 self._save_index()
                 self._save_bm25()
+                if self._coordination:
+                    self._coordination.notify_change(
+                        document_path, "removed", agent_id or "",
+                    )
             return result
 
     def _merge_similar_chunks(self, chunks: List[Chunk]) -> List[Chunk]:

@@ -596,8 +596,17 @@ class CoordinationBackend:
 
         Use ``exclude_agent`` to skip an agent's own notifications
         (common pattern: "what changed since my last check, by others?").
+
+        Auto-prunes notifications older than 24 hours to prevent
+        unbounded growth.
         """
         with self._connect() as conn:
+            # Lazy prune: remove notifications older than 24 hours
+            cutoff = time.time() - 86400
+            conn.execute(
+                "DELETE FROM change_notifications WHERE created_at < ?",
+                (cutoff,),
+            )
             conditions: List[str] = []
             params: List[Any] = []
 
@@ -626,3 +635,31 @@ class CoordinationBackend:
                 "count": len(notifications),
                 "latest_timestamp": latest,
             }
+
+    def prune_notifications(
+        self,
+        max_age_seconds: Optional[float] = None,
+        max_entries: Optional[int] = None,
+    ) -> int:
+        """Prune old change notifications. Returns deleted count."""
+        deleted = 0
+        with self._connect() as conn:
+            if max_age_seconds is not None:
+                cutoff = time.time() - max_age_seconds
+                cursor = conn.execute(
+                    "DELETE FROM change_notifications WHERE created_at < ?",
+                    (cutoff,),
+                )
+                deleted += cursor.rowcount
+
+            if max_entries is not None:
+                cursor = conn.execute(
+                    "DELETE FROM change_notifications WHERE id NOT IN "
+                    "(SELECT id FROM change_notifications "
+                    "ORDER BY created_at DESC LIMIT ?)",
+                    (max_entries,),
+                )
+                deleted += cursor.rowcount
+
+            conn.commit()
+        return deleted
