@@ -45,7 +45,6 @@ class MetadataStorage:
             """,
                 (target, target_type, content, tags_json, now, now),
             )
-            conn.commit()
             return cursor.lastrowid  # type: ignore[return-value]
 
     def get_annotations(
@@ -87,7 +86,6 @@ class MetadataStorage:
             cursor = conn.execute(
                 "DELETE FROM annotations WHERE id = ?", (annotation_id,)
             )
-            conn.commit()
             return cursor.rowcount > 0
 
     def update_annotation(
@@ -114,7 +112,6 @@ class MetadataStorage:
                 f"UPDATE annotations SET {', '.join(sets)} WHERE id = ?",
                 params,
             )
-            conn.commit()
             return cursor.rowcount > 0
 
     def search_annotations(
@@ -157,7 +154,6 @@ class MetadataStorage:
             """,
                 (now, session_id, summary_json, reason),
             )
-            conn.commit()
             return cursor.lastrowid  # type: ignore[return-value]
 
     def get_change_history(
@@ -178,8 +174,8 @@ class MetadataStorage:
                 cursor = conn.execute(
                     "SELECT * FROM change_history "
                     "WHERE summary_json LIKE ? "
-                    "ORDER BY timestamp DESC",
-                    (f"%{document_path}%",),
+                    "ORDER BY timestamp DESC LIMIT ?",
+                    (f"%{document_path}%", limit * 10),
                 )
             else:
                 cursor = conn.execute(
@@ -222,7 +218,6 @@ class MetadataStorage:
                     (max_entries,),
                 )
                 deleted += cursor.rowcount
-            conn.commit()
         return deleted
 
     @staticmethod

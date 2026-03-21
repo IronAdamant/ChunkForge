@@ -4,7 +4,7 @@
 
 | Path | Purpose | Internal Deps | Tests |
 |------|---------|---------------|-------|
-| `stele/__init__.py` | Package root, exports `__version__` | None | test_core.py |
+| `stele/__init__.py` | Package root, exports `__version__`, `Stele`, `Chunk` | None | test_core.py |
 | `stele/core.py` | Backward-compat re-exports (`Stele`, `Chunk`) | engine, chunkers.base | test_core.py |
 | `stele/engine.py` | Main orchestrator, thin `Stele` facade class | indexing, search_engine, change_detection, engine_utils, config, rwlock, session, storage, symbol_graph | test_engine.py |
 | `stele/engine_utils.py` | Path normalization, lock routing, env checks | coordination, env_checks | (via test_engine.py, test_worktree_safety.py) |

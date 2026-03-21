@@ -241,8 +241,7 @@ def detect_changes_unlocked(
     if coordination:
         changes = []
         for d in results.get("modified", []):
-            if isinstance(d, dict):
-                changes.append((d["path"], "modified"))
+            changes.append((d["path"], "modified"))
         for path in results.get("removed", []):
             changes.append((path, "removed"))
         if changes:

@@ -26,6 +26,10 @@ WRITE_TOOLS = frozenset(
         "save_kv_state",
         "store_semantic_summary",
         "store_embedding",
+        "acquire_document_lock",
+        "release_document_lock",
+        "refresh_document_lock",
+        "release_agent_locks",
     }
 )
 

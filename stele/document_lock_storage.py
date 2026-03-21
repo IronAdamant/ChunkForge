@@ -86,7 +86,6 @@ class DocumentLockStorage:
                 "WHERE document_path = ?",
                 (agent_id, now, ttl, document_path),
             )
-            conn.commit()
             return {"acquired": True, "doc_version": row["doc_version"]}
 
     def refresh_lock(
@@ -127,7 +126,6 @@ class DocumentLockStorage:
                 "WHERE document_path = ?",
                 (document_path,),
             )
-            conn.commit()
             return {"released": True}
 
     def get_lock_status(self, document_path: str) -> dict[str, Any]:
@@ -226,7 +224,6 @@ class DocumentLockStorage:
                 "SELECT doc_version FROM documents WHERE document_path = ?",
                 (document_path,),
             ).fetchone()
-            conn.commit()
             return row[0] if row else 1
 
     def check_and_increment_version(
@@ -255,7 +252,6 @@ class DocumentLockStorage:
                 "UPDATE documents SET doc_version = ? WHERE document_path = ?",
                 (actual + 1, document_path),
             )
-            conn.commit()
             return {"success": True, "new_version": actual + 1}
 
     # -- Conflict log ---------------------------------------------------------
@@ -325,6 +321,4 @@ class DocumentLockStorage:
                     (max_entries,),
                 )
                 deleted += cursor.rowcount
-
-            conn.commit()
         return deleted

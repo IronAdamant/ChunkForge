@@ -167,7 +167,6 @@ class StorageBackend(StorageDelegatesMixin):
                         content,
                     ),
                 )
-            conn.commit()
 
     def get_chunk(self, chunk_id: str) -> dict[str, Any] | None:
         """Retrieve chunk metadata by ID."""
@@ -184,7 +183,6 @@ class StorageBackend(StorageDelegatesMixin):
                 "WHERE chunk_id = ?",
                 (now, chunk_id),
             )
-            conn.commit()
             return dict(row)
 
     def get_chunk_content(self, chunk_id: str) -> str | None:
@@ -327,7 +325,6 @@ class StorageBackend(StorageDelegatesMixin):
             """,
                 (document_path, content_hash, chunk_count, now, last_modified),
             )
-            conn.commit()
 
     def get_document(self, document_path: str) -> dict[str, Any] | None:
         """Get document indexing information."""
@@ -362,7 +359,6 @@ class StorageBackend(StorageDelegatesMixin):
                 "WHERE chunk_id = ?",
                 (summary, sig_bytes, chunk_id),
             )
-            conn.commit()
             return cursor.rowcount > 0
 
     def store_agent_signature(
@@ -377,7 +373,6 @@ class StorageBackend(StorageDelegatesMixin):
                 "UPDATE chunks SET agent_signature = ? WHERE chunk_id = ?",
                 (sig_bytes, chunk_id),
             )
-            conn.commit()
             return cursor.rowcount > 0
 
     def get_agent_signature(self, chunk_id: str) -> Any | None:
@@ -437,7 +432,6 @@ class StorageBackend(StorageDelegatesMixin):
                 "UPDATE chunks SET staleness_score = ? WHERE chunk_id = ?",
                 (score, chunk_id),
             )
-            conn.commit()
 
     def set_staleness_batch(self, updates: list[tuple]) -> None:
         """Set staleness for multiple chunks. Each: (score, chunk_id)."""
@@ -448,13 +442,11 @@ class StorageBackend(StorageDelegatesMixin):
                 "UPDATE chunks SET staleness_score = ? WHERE chunk_id = ?",
                 updates,
             )
-            conn.commit()
 
     def clear_staleness(self) -> None:
         """Reset all staleness scores to 0."""
         with connect(self.db_path) as conn:
             conn.execute("UPDATE chunks SET staleness_score = 0.0")
-            conn.commit()
 
     def get_stale_chunks(self, threshold: float = 0.3) -> list[dict[str, Any]]:
         """Get chunks with staleness_score >= threshold."""
@@ -543,7 +535,6 @@ class StorageBackend(StorageDelegatesMixin):
                 f"DELETE FROM chunks WHERE chunk_id IN ({placeholders})",
                 chunk_ids,
             )
-            conn.commit()
             return cursor.rowcount
 
     def remove_document(self, document_path: str) -> dict[str, Any]:
@@ -568,7 +559,6 @@ class StorageBackend(StorageDelegatesMixin):
                 (document_path,),
             )
             annotations_removed = cursor.rowcount
-            conn.commit()
 
         # Delegate chunk deletion (handles session_chunks, history, chunk annotations)
         chunks_removed = self.delete_chunks(chunk_ids)
@@ -577,7 +567,6 @@ class StorageBackend(StorageDelegatesMixin):
             conn.execute(
                 "DELETE FROM documents WHERE document_path = ?", (document_path,)
             )
-            conn.commit()
 
         return {
             "removed": True,
@@ -600,7 +589,6 @@ class StorageBackend(StorageDelegatesMixin):
             conn.execute("DELETE FROM annotations")
             conn.execute("DELETE FROM change_history")
             conn.execute("DELETE FROM document_conflicts")
-            conn.commit()
 
         for kv_file in self.kv_dir.rglob("*.kv"):
             kv_file.unlink()

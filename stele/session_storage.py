@@ -67,7 +67,6 @@ class SessionStorage:
                     "UPDATE sessions SET agent_id = ? WHERE session_id = ?",
                     (agent_id, session_id),
                 )
-            conn.commit()
 
     def get_session(self, session_id: str) -> dict[str, Any] | None:
         """Get session metadata."""
@@ -120,7 +119,6 @@ class SessionStorage:
             conn.execute(
                 f"UPDATE sessions SET {', '.join(updates)} WHERE session_id = ?", params
             )
-            conn.commit()
 
     def store_kv_state(
         self,
@@ -167,7 +165,6 @@ class SessionStorage:
             """,
                 (session_id, chunk_id, turn_number, str(kv_path), relevance_score),
             )
-            conn.commit()
 
         return str(kv_path)
 
@@ -278,8 +275,6 @@ class SessionStorage:
                 (target_turn, time.time(), session_id),
             )
 
-            conn.commit()
-
         self._cleanup_orphaned_kv_files(session_id)
         return removed_count
 
@@ -330,8 +325,6 @@ class SessionStorage:
                 """,
                     (total_tokens, time.time(), session_id),
                 )
-
-            conn.commit()
 
         self._cleanup_orphaned_kv_files(session_id)
         return pruned_count

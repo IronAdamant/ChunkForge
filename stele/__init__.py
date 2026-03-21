@@ -18,7 +18,7 @@ Key Features:
 All operations are 100% offline and local-only. No internet access required.
 """
 
-__version__ = "0.10.2"
+__version__ = "0.10.3"
 __author__ = "Stele Contributors"
 __license__ = "MIT"
 
@@ -26,9 +26,11 @@ from stele.engine import Stele
 from stele.storage import StorageBackend
 from stele.session import SessionManager
 from stele.mcp_server import MCPServer
+from stele.chunkers.base import Chunk
 
 __all__ = [
     "Stele",
+    "Chunk",
     "StorageBackend",
     "SessionManager",
     "MCPServer",

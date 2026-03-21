@@ -69,7 +69,6 @@ class SymbolStorage:
                 "CREATE INDEX IF NOT EXISTS idx_edges_symbol "
                 "ON symbol_edges(symbol_name)"
             )
-            conn.commit()
 
     # -- Bulk operations -----------------------------------------------------
 
@@ -86,7 +85,6 @@ class SymbolStorage:
                     for s in symbols
                 ],
             )
-            conn.commit()
 
     def store_edges(self, edges: list[tuple[str, str, str, str]]) -> None:
         """Store a batch of edges.
@@ -102,7 +100,6 @@ class SymbolStorage:
                 "VALUES (?, ?, ?, ?)",
                 edges,
             )
-            conn.commit()
 
     # -- Cleanup operations --------------------------------------------------
 
@@ -112,7 +109,6 @@ class SymbolStorage:
             conn.execute(
                 "DELETE FROM symbols WHERE document_path = ?", (document_path,)
             )
-            conn.commit()
 
     def clear_chunk_edges(self, chunk_ids: list[str]) -> None:
         """Remove all edges involving the given chunk IDs."""
@@ -125,7 +121,6 @@ class SymbolStorage:
                 f"OR target_chunk_id IN ({placeholders})",
                 chunk_ids + chunk_ids,
             )
-            conn.commit()
 
     def clear_chunk_symbols(self, chunk_ids: list[str]) -> None:
         """Remove all symbols for the given chunk IDs."""
@@ -137,19 +132,16 @@ class SymbolStorage:
                 f"DELETE FROM symbols WHERE chunk_id IN ({placeholders})",
                 chunk_ids,
             )
-            conn.commit()
 
     def clear_all_symbols(self) -> None:
         """Remove all symbols."""
         with connect(self.db_path) as conn:
             conn.execute("DELETE FROM symbols")
-            conn.commit()
 
     def clear_all_edges(self) -> None:
         """Remove all edges."""
         with connect(self.db_path) as conn:
             conn.execute("DELETE FROM symbol_edges")
-            conn.commit()
 
     # -- Query operations ----------------------------------------------------
 

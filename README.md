@@ -30,8 +30,8 @@ Stele helps LLM agents avoid re-reading unchanged files by caching chunk data wi
 graph TB
     subgraph API["API Layer"]
         CLI["CLI<br/>stele index / search / serve"]
-        HTTP["HTTP REST<br/>30 tools, threaded"]
-        MCP["MCP stdio<br/>32 tools, JSON-RPC"]
+        HTTP["HTTP REST<br/>42 tools, threaded"]
+        MCP["MCP stdio<br/>42 tools, JSON-RPC"]
     end
 
     subgraph Engine["Engine (engine.py)"]
@@ -286,22 +286,22 @@ The agent IS the embedding model. Stele just stores and indexes what the agent t
 
 ## MCP Tools
 
-### HTTP Server (30 tools)
+### Both Servers (42 tools each)
+
+Both the HTTP REST server and MCP stdio server expose all 42 tools via a unified registry.
 
 | Category | Tools |
 |----------|-------|
-| **Indexing** | `index_documents`, `detect_changes_and_update`, `detect_modality`, `get_supported_formats` |
-| **Search** | `search`, `get_context`, `get_relevant_kv` |
+| **Indexing** | `index`, `remove`, `detect_changes`, `detect_modality`, `get_supported_formats` |
+| **Search** | `search`, `search_text`, `get_context`, `get_relevant_kv` |
+| **Annotations** | `annotate`, `get_annotations`, `delete_annotation`, `update_annotation`, `search_annotations`, `bulk_annotate` |
 | **Sessions** | `save_kv_state`, `rollback`, `prune_chunks`, `list_sessions` |
-| **Symbols** | `find_references`, `find_definition`, `impact_radius`, `rebuild_symbol_graph`, `stale_chunks` |
+| **Symbols** | `find_references`, `find_definition`, `impact_radius`, `rebuild_symbols`, `stale_chunks` |
 | **Locking** | `acquire_document_lock`, `release_document_lock`, `refresh_document_lock`, `get_document_lock_status`, `release_agent_locks`, `reap_expired_locks` |
-| **History** | `get_conflicts`, `get_chunk_history`, `get_notifications` |
+| **History** | `get_conflicts`, `get_chunk_history`, `get_notifications`, `history`, `prune_history` |
+| **Stats & Map** | `stats`, `map` |
 | **Embeddings** | `store_semantic_summary`, `store_embedding` |
 | **Utilities** | `list_agents`, `environment_check`, `clean_bytecache` |
-
-### MCP stdio Server (32 tools)
-
-All HTTP tools plus: `annotate`, `get_annotations`, `delete_annotation`, `update_annotation`, `search_annotations`, `bulk_annotate`, `prune_history`, `map`, `history`, `stats`, `remove`
 
 ## How It Works
 

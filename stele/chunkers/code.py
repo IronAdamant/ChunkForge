@@ -241,21 +241,22 @@ class CodeChunker(BaseChunker):
             def_tokens = estimate_tokens(def_text)
 
             if current_tokens + def_tokens > self.chunk_size and current_parts:
-                chunk_content = "".join(current_parts).strip()
+                raw = "".join(current_parts)
+                chunk_content = raw.strip()
                 if chunk_content:
                     chunks.append(
                         Chunk(
                             content=chunk_content,
                             modality="code",
                             start_pos=current_start,
-                            end_pos=current_start + len(chunk_content),
+                            end_pos=current_start + len(raw),
                             document_path=document_path,
                             chunk_index=chunk_index,
                             metadata={"language": language},
                         )
                     )
                     chunk_index += 1
-                current_start += len("".join(current_parts))
+                current_start += len(raw)
                 current_parts = []
                 current_tokens = 0
 

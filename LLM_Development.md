@@ -2,6 +2,29 @@
 
 Chronological record of development activity on Stele, maintained for LLM agent context.
 
+## 2026-03-21 - v0.10.3 Codebase Audit & Cleanup
+
+### Bug fixes
+- Fixed position tracking bug in `CodeChunker._boundaries_to_chunks()`: `end_pos` used stripped length but `current_start` advanced by unstripped length, causing misaligned chunk positions
+- Fixed unbounded SQL query in `metadata_storage.get_change_history()` when filtering by `document_path` — added `LIMIT` to prevent loading entire table
+- Fixed agent_id injection inconsistency: `mcp_stdio.py` injected unconditionally while `mcp_handlers.py` checked for truthy `server_agent_id` — now both match
+- Added lock-related tools to `WRITE_TOOLS` (`acquire_document_lock`, `release_document_lock`, `refresh_document_lock`, `release_agent_locks`) for proper auto agent_id injection
+- Synced `pyproject.toml` version with `__init__.py` (was stuck at 0.10.0)
+
+### Dead code removed
+- Removed 35 redundant `conn.commit()` calls inside `connect()` context manager blocks (storage.py: 12, symbol_storage.py: 8, session_storage.py: 5, metadata_storage.py: 5, document_lock_storage.py: 5) — context manager auto-commits
+- Removed unnecessary `isinstance(d, dict)` check in `change_detection.py` (all entries guaranteed to be dicts)
+- Removed production `assert` in `image.py` (replaced with type annotation)
+
+### Improvements
+- Added `Chunk` to `stele/__init__.py` exports — key public type was missing from package root
+
+### Documentation
+- Updated README MCP tools section: accurate 42-tool count for both servers, complete tool listing
+- Updated README architecture diagram tool counts (30/32 → 42/42)
+- Updated COMPLETE_PROJECT_DOCUMENTATION.md with `Chunk` export
+- Total: 573 pass, 1 skipped
+
 ## 2026-03-21 - v0.10.2 Lock Deduplication & Storage Improvements
 
 ### Refactoring

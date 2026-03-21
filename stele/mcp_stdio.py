@@ -110,7 +110,7 @@ def create_server(storage_dir: str | None = None) -> _ServerBundle:
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         try:
             # Inject server agent_id for write operations when not provided
-            if name in WRITE_TOOLS and "agent_id" not in arguments:
+            if name in WRITE_TOOLS and "agent_id" not in arguments and server_agent_id:
                 arguments = {**arguments, "agent_id": server_agent_id}
 
             if name not in tool_map:

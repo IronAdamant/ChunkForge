@@ -161,8 +161,7 @@ class ImageChunker(BaseChunker):
     def _chunk_tiled(self, img: Any, document_path: str) -> list[Chunk]:
         """Create chunks from image tiles."""
         width, height = img.size
-        assert self.tile_size is not None
-        tile_size: int = self.tile_size
+        tile_size: int = self.tile_size  # type: ignore[assignment]
 
         chunks: list[Chunk] = []
         chunk_index = 0
