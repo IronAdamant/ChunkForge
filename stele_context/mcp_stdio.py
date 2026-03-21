@@ -26,7 +26,7 @@ from typing import Any
 
 from stele_context import __version__ as _version
 from stele_context.mcp_tool_defs import TOOL_DEFINITIONS
-from stele_context.tool_registry import WRITE_TOOLS, build_tool_map
+from stele_context.tool_registry import WRITE_TOOLS, build_tool_map, get_modality_flags
 
 logger = logging.getLogger(__name__)
 
@@ -77,25 +77,12 @@ def create_server(storage_dir: str | None = None) -> _ServerBundle:
             "MCP SDK not installed. Install with: pip install stele-context[mcp]"
         )
 
-    from stele_context.chunkers import (
-        HAS_IMAGE_CHUNKER,
-        HAS_PDF_CHUNKER,
-        HAS_AUDIO_CHUNKER,
-        HAS_VIDEO_CHUNKER,
-    )
-
     engine = _create_engine(storage_dir)
     server = Server("stele-context")
     server_agent_id = f"stele-context-mcp-{os.getpid()}"
 
     # Build tool dispatch map once (not per request)
-    modality_flags = {
-        "image": HAS_IMAGE_CHUNKER,
-        "pdf": HAS_PDF_CHUNKER,
-        "audio": HAS_AUDIO_CHUNKER,
-        "video": HAS_VIDEO_CHUNKER,
-    }
-    tool_map = build_tool_map(engine, modality_flags)
+    tool_map = build_tool_map(engine, get_modality_flags())
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
@@ -209,8 +196,6 @@ def run(storage_dir: str | None = None) -> None:
     bundle = create_server(storage_dir)
     asyncio.run(_run_server(bundle))
 
-
-main = run
 
 main = run
 

@@ -5,6 +5,25 @@ All notable changes to Stele Context will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-03-22
+
+### Fixed
+- **text.py**: Initialize `metadata` before paragraph loop to prevent potential `UnboundLocalError` on empty input
+- **image.py**: Guard `_color_histogram()` against division-by-zero when histogram length < bins (`step = max(1, ...)`)
+- **protocols.py**: Fix `propagate_staleness` return type (`None` → `int`) to match actual implementation in `symbol_graph.py`
+- **mcp_stdio.py**: Remove duplicate `main = run` assignment
+- **mcp_server.py**: Join `_heartbeat_thread` in `stop()` for clean daemon shutdown
+- **lock_ops.py**: Save/restore `row_factory` in all four functions to prevent state leakage through connection pool
+- **storage_schema.py**: Reset `row_factory = None` in fallback (non-pooled) connection path for consistency
+
+### Changed
+- **change_notifications.py**: Replace legacy `Optional[str]` with modern `str | None` union syntax, remove unused `Optional` import
+- **symbol_graph.py**: Complete generic type annotations (`set[str]`, `dict[str, list[dict[str, Any]]]`)
+- **audio.py / video.py**: Move `os` and `tempfile` imports to module level (were re-imported inside methods)
+- **tool_registry.py**: Extract `get_modality_flags()` helper to deduplicate modality flag construction from both MCP servers
+- **mcp_server.py / mcp_stdio.py**: Use shared `get_modality_flags()` instead of inline flag dicts
+- **text.py**: Remove stale comment claiming methods were inlined
+
 ## [1.0.0] - 2026-03-22
 
 ### Changed

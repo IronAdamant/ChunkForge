@@ -161,7 +161,7 @@ class SymbolGraphManager:
         """Get chunks with staleness_score >= threshold, grouped by file."""
         stale = self.storage.get_stale_chunks(threshold)
 
-        by_doc: dict[str, list] = {}
+        by_doc: dict[str, list[dict[str, Any]]] = {}
         for chunk in stale:
             by_doc.setdefault(chunk["document_path"], []).append(
                 {
@@ -247,7 +247,7 @@ class SymbolGraphManager:
         depth: int = 2,
     ) -> dict[str, Any]:
         """Find all chunks affected by a change to this chunk (BFS)."""
-        visited: set = set()
+        visited: set[str] = set()
         queue = deque([(chunk_id, 0)])
         layers: dict[int, list[str]] = {}
 
@@ -295,7 +295,7 @@ class SymbolGraphManager:
         self.storage.clear_all_symbols()
         self.storage.clear_all_edges()
 
-        by_doc: dict[str, list] = {}
+        by_doc: dict[str, list[dict[str, Any]]] = {}
         for chunk in all_chunks:
             by_doc.setdefault(chunk["document_path"], []).append(chunk)
 

@@ -126,6 +126,23 @@ def build_tool_map(
     return tool_map
 
 
+def get_modality_flags() -> dict[str, bool]:
+    """Build modality availability flags from installed chunkers."""
+    from stele_context.chunkers import (
+        HAS_IMAGE_CHUNKER,
+        HAS_PDF_CHUNKER,
+        HAS_AUDIO_CHUNKER,
+        HAS_VIDEO_CHUNKER,
+    )
+
+    return {
+        "image": HAS_IMAGE_CHUNKER,
+        "pdf": HAS_PDF_CHUNKER,
+        "audio": HAS_AUDIO_CHUNKER,
+        "video": HAS_VIDEO_CHUNKER,
+    }
+
+
 def get_http_schemas() -> dict[str, dict[str, Any]]:
     """Convert tool definitions to the HTTP server schema format.
 

@@ -266,7 +266,7 @@ class ImageChunker(BaseChunker):
 
             # Combine (sample to reduce dimensionality)
             combined = []
-            step = len(r_norm) // bins
+            step = max(1, len(r_norm) // bins)
             for i in range(0, len(r_norm), step):
                 combined.append(r_norm[i])
                 combined.append(g_norm[i])

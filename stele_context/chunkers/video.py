@@ -9,6 +9,8 @@ Install: pip install stele[video]
 
 from __future__ import annotations
 
+import os
+import tempfile
 from typing import Any
 
 from stele_context.chunkers.base import BaseChunker, Chunk
@@ -91,8 +93,6 @@ class VideoChunker(BaseChunker):
         # Open video
         if isinstance(content, bytes):
             # Save to temp file for opencv
-            import tempfile
-
             with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
                 f.write(content)
                 temp_path = f.name
@@ -200,8 +200,6 @@ class VideoChunker(BaseChunker):
         finally:
             cap.release()
             if cleanup_path:
-                import os
-
                 os.unlink(cleanup_path)
 
     @staticmethod

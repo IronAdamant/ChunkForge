@@ -84,8 +84,6 @@ class TextChunker(BaseChunker):
 
         return self._chunk_by_paragraphs(content, document_path, adaptive=self.adaptive)
 
-    # _chunk_paragraphs and _chunk_adaptive inlined into chunk() above
-
     def _chunk_by_paragraphs(
         self, content: str, document_path: str, adaptive: bool
     ) -> list[Chunk]:
@@ -103,6 +101,7 @@ class TextChunker(BaseChunker):
         current_tokens = 0
         current_start = 0
         chunk_index = 0
+        metadata: dict[str, Any] = {}
 
         for para in paragraphs:
             para = para.strip()
@@ -110,7 +109,7 @@ class TextChunker(BaseChunker):
                 continue
 
             # Determine target size for this paragraph
-            metadata: dict[str, Any] = {}
+            metadata = {}
             if adaptive:
                 density = self._content_density(para)
                 target_size = int(self.chunk_size * (1.0 - density * 0.5))

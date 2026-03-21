@@ -12,10 +12,8 @@ import sqlite3
 import time
 from typing import Any, Callable
 
-from typing import Optional
-
 ConnectFn = Callable[[], sqlite3.Connection]
-GetWorktreeFn = Callable[[sqlite3.Connection, str], Optional[str]]
+GetWorktreeFn = Callable[[sqlite3.Connection, str], str | None]
 
 
 def init_notifications_table(connect: ConnectFn) -> None:

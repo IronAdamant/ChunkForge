@@ -46,21 +46,25 @@ def refresh_lock(
 ) -> dict[str, Any]:
     """Check owner and refresh lock TTL.  Shared by local and shared locks."""
     now = time.time()
+    prev_factory = conn.row_factory
     conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        f"SELECT locked_by, lock_ttl FROM {table} WHERE document_path = ?",
-        (document_path,),
-    ).fetchone()
-    if row is None:
-        return {"refreshed": False, "reason": not_found_reason}
-    if row["locked_by"] != agent_id:
-        return {"refreshed": False, "reason": "not_owner"}
-    new_ttl = ttl if ttl is not None else row["lock_ttl"]
-    conn.execute(
-        f"UPDATE {table} SET locked_at = ?, lock_ttl = ? WHERE document_path = ?",
-        (now, new_ttl, document_path),
-    )
-    return {"refreshed": True, "expires_at": now + new_ttl}
+    try:
+        row = conn.execute(
+            f"SELECT locked_by, lock_ttl FROM {table} WHERE document_path = ?",
+            (document_path,),
+        ).fetchone()
+        if row is None:
+            return {"refreshed": False, "reason": not_found_reason}
+        if row["locked_by"] != agent_id:
+            return {"refreshed": False, "reason": "not_owner"}
+        new_ttl = ttl if ttl is not None else row["lock_ttl"]
+        conn.execute(
+            f"UPDATE {table} SET locked_at = ?, lock_ttl = ? WHERE document_path = ?",
+            (now, new_ttl, document_path),
+        )
+        return {"refreshed": True, "expires_at": now + new_ttl}
+    finally:
+        conn.row_factory = prev_factory
 
 
 def record_conflict(
@@ -107,20 +111,24 @@ def query_conflicts(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     """Build WHERE clause and query conflict rows.  Shared by both tables."""
+    prev_factory = conn.row_factory
     conn.row_factory = sqlite3.Row
-    conditions: list[str] = []
-    params: list[Any] = []
-    if document_path is not None:
-        conditions.append("document_path = ?")
-        params.append(document_path)
-    if agent_id is not None:
-        conditions.append("(agent_a = ? OR agent_b = ?)")
-        params.extend([agent_id, agent_id])
-    where = "WHERE " + " AND ".join(conditions) if conditions else ""
-    query = f"SELECT * FROM {table} {where} ORDER BY created_at DESC LIMIT ?"
-    params.append(limit)
-    rows = conn.execute(query, params).fetchall()
-    return hydrate_conflicts(rows)
+    try:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if document_path is not None:
+            conditions.append("document_path = ?")
+            params.append(document_path)
+        if agent_id is not None:
+            conditions.append("(agent_a = ? OR agent_b = ?)")
+            params.extend([agent_id, agent_id])
+        where = "WHERE " + " AND ".join(conditions) if conditions else ""
+        query = f"SELECT * FROM {table} {where} ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(query, params).fetchall()
+        return hydrate_conflicts(rows)
+    finally:
+        conn.row_factory = prev_factory
 
 
 def release_agent_locks(
@@ -135,22 +143,26 @@ def release_agent_locks(
     When ``delete=True``, rows are removed (shared_locks).
     When ``delete=False``, columns are NULLed (documents table).
     """
+    prev_factory = conn.row_factory
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        f"SELECT document_path FROM {table} WHERE locked_by = ?",
-        (agent_id,),
-    ).fetchall()
-    docs = [r["document_path"] for r in rows]
-    if docs:
-        if delete:
-            conn.execute(f"DELETE FROM {table} WHERE locked_by = ?", (agent_id,))
-        else:
-            conn.execute(
-                f"UPDATE {table} SET locked_by = NULL, locked_at = NULL "
-                "WHERE locked_by = ?",
-                (agent_id,),
-            )
-    return {"released_count": len(docs), "documents": docs}
+    try:
+        rows = conn.execute(
+            f"SELECT document_path FROM {table} WHERE locked_by = ?",
+            (agent_id,),
+        ).fetchall()
+        docs = [r["document_path"] for r in rows]
+        if docs:
+            if delete:
+                conn.execute(f"DELETE FROM {table} WHERE locked_by = ?", (agent_id,))
+            else:
+                conn.execute(
+                    f"UPDATE {table} SET locked_by = NULL, locked_at = NULL "
+                    "WHERE locked_by = ?",
+                    (agent_id,),
+                )
+        return {"released_count": len(docs), "documents": docs}
+    finally:
+        conn.row_factory = prev_factory
 
 
 def reap_expired_locks(
@@ -165,30 +177,34 @@ def reap_expired_locks(
     When ``delete=False``, lock columns are NULLed (documents table).
     """
     now = time.time()
+    prev_factory = conn.row_factory
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        f"SELECT document_path, locked_by FROM {table} "
-        "WHERE locked_by IS NOT NULL AND (locked_at + lock_ttl) < ?",
-        (now,),
-    ).fetchall()
-    if rows:
-        if delete:
-            conn.execute(
-                f"DELETE FROM {table} WHERE (locked_at + lock_ttl) < ?",
-                (now,),
-            )
-        else:
-            expired_paths = [r["document_path"] for r in rows]
-            placeholders = ",".join("?" * len(expired_paths))
-            conn.execute(
-                f"UPDATE {table} SET locked_by = NULL, locked_at = NULL "
-                f"WHERE document_path IN ({placeholders})",
-                expired_paths,
-            )
-    return {
-        "reaped_count": len(rows),
-        "documents": [
-            {"document_path": r["document_path"], "was_locked_by": r["locked_by"]}
-            for r in rows
-        ],
-    }
+    try:
+        rows = conn.execute(
+            f"SELECT document_path, locked_by FROM {table} "
+            "WHERE locked_by IS NOT NULL AND (locked_at + lock_ttl) < ?",
+            (now,),
+        ).fetchall()
+        if rows:
+            if delete:
+                conn.execute(
+                    f"DELETE FROM {table} WHERE (locked_at + lock_ttl) < ?",
+                    (now,),
+                )
+            else:
+                expired_paths = [r["document_path"] for r in rows]
+                placeholders = ",".join("?" * len(expired_paths))
+                conn.execute(
+                    f"UPDATE {table} SET locked_by = NULL, locked_at = NULL "
+                    f"WHERE document_path IN ({placeholders})",
+                    expired_paths,
+                )
+        return {
+            "reaped_count": len(rows),
+            "documents": [
+                {"document_path": r["document_path"], "was_locked_by": r["locked_by"]}
+                for r in rows
+            ],
+        }
+    finally:
+        conn.row_factory = prev_factory

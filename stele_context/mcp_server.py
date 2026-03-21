@@ -24,16 +24,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 from stele_context.engine import Stele
-from stele_context.chunkers import (
-    HAS_IMAGE_CHUNKER,
-    HAS_PDF_CHUNKER,
-    HAS_AUDIO_CHUNKER,
-    HAS_VIDEO_CHUNKER,
-)
 from stele_context.tool_registry import (
     WRITE_TOOLS,
     build_tool_map,
     get_http_schemas,
+    get_modality_flags,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,14 +106,8 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
             self._send_error(404, "Not found")
 
     def _build_tool_map(self) -> dict[str, Any]:
-        """Build tool name -> callable mapping via mcp_handlers."""
-        modality_flags = {
-            "image": HAS_IMAGE_CHUNKER,
-            "pdf": HAS_PDF_CHUNKER,
-            "audio": HAS_AUDIO_CHUNKER,
-            "video": HAS_VIDEO_CHUNKER,
-        }
-        return build_tool_map(self.stele, modality_flags)
+        """Build tool name -> callable mapping via tool_registry."""
+        return build_tool_map(self.stele, get_modality_flags())
 
     def _handle_tools_discovery(self) -> None:
         """Return list of available tools.
@@ -276,6 +265,10 @@ class MCPServer:
             logger.info("Stopping Stele MCP server")
             self.server.shutdown()
             self.server = None
+
+        if self._heartbeat_thread:
+            self._heartbeat_thread.join(timeout=5)
+            self._heartbeat_thread = None
 
         if self._thread:
             self._thread.join(timeout=5)

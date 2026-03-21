@@ -2,6 +2,24 @@
 
 Chronological record of development activity on Stele Context, maintained for LLM agent context.
 
+## 2026-03-22 - v1.0.1 Codebase Cleanup
+
+### Bug fixes
+- Fixed potential `UnboundLocalError` in `TextChunker._chunk_by_paragraphs()` for empty input
+- Fixed division-by-zero guard in `ImageChunker._color_histogram()` when bins > histogram length
+- Fixed `SymbolManagerProto.propagate_staleness` return type mismatch (`None` → `int`)
+- Removed duplicate `main = run` in `mcp_stdio.py`
+- Added `_heartbeat_thread.join()` in `MCPServer.stop()` for clean shutdown
+- Fixed `row_factory` state leakage in all four `lock_ops.py` functions (save/restore pattern)
+- Reset `row_factory` in non-pooled connection path in `storage_schema.py`
+
+### Code quality
+- Replaced legacy `Optional` import with `str | None` in `change_notifications.py`
+- Completed generic type annotations in `symbol_graph.py`
+- Moved `os`/`tempfile` imports to module level in `audio.py` and `video.py`
+- Extracted `get_modality_flags()` helper in `tool_registry.py`, used by both MCP servers
+- Removed stale comment in `text.py`
+
 ## 2026-03-22 - v1.0.0 Stable Release
 
 ### Breaking changes

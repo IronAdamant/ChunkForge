@@ -52,6 +52,7 @@ def connect(db_path: Any) -> Any:
             raise
     else:
         conn = sqlite3.connect(db_path)
+        conn.row_factory = None  # reset to default for consistency
         conn.execute("PRAGMA synchronous=NORMAL")
         try:
             yield conn

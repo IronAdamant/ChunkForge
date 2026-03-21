@@ -9,6 +9,8 @@ Install: pip install stele[audio]
 
 from __future__ import annotations
 
+import os
+import tempfile
 from typing import Any
 
 from stele_context.chunkers.base import BaseChunker, Chunk
@@ -93,8 +95,6 @@ class AudioChunker(BaseChunker):
         # Load audio
         if isinstance(content, bytes):
             # Save to temp file for librosa
-            import tempfile
-
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 f.write(content)
                 temp_path = f.name
@@ -102,8 +102,6 @@ class AudioChunker(BaseChunker):
             try:
                 y, sr = librosa.load(temp_path, sr=self.sample_rate)
             finally:
-                import os
-
                 os.unlink(temp_path)
         elif isinstance(content, str):
             y, sr = librosa.load(content, sr=self.sample_rate)
