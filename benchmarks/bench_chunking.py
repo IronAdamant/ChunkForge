@@ -8,8 +8,8 @@ import os
 import statistics
 import time
 
-from stele.chunkers.text import TextChunker
-from stele.chunkers.code import CodeChunker
+from stele_context.chunkers.text import TextChunker
+from stele_context.chunkers.code import CodeChunker
 
 _QUICK = os.environ.get("STELE_BENCH_QUICK") == "1"
 

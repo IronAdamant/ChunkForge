@@ -1,7 +1,7 @@
 """Tests for agent-supplied semantic embeddings."""
 
-from stele.engine import Stele
-from stele.storage import StorageBackend
+from stele_context.engine import Stele
+from stele_context.storage import StorageBackend
 
 
 class TestStorageAgentEmbeddings:
@@ -174,7 +174,7 @@ class TestIndexRebuildWithAgentSignatures:
         engine.store_semantic_summary(chunk_id, "Data processing pipeline entry point")
 
         # Force index rebuild
-        from stele.search_engine import load_or_rebuild_index
+        from stele_context.search_engine import load_or_rebuild_index
 
         engine.vector_index = load_or_rebuild_index(engine.storage)
 

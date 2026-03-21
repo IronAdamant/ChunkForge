@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from stele.rwlock import RWLock
+from stele_context.rwlock import RWLock
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ class TestRWLock:
 @pytest.fixture
 def engine_with_data(tmp_path):
     """Create a Stele engine with some indexed data."""
-    from stele.engine import Stele
+    from stele_context.engine import Stele
 
     engine = Stele(storage_dir=str(tmp_path / "stele_data"))
 
@@ -172,7 +172,7 @@ class TestEngineConcurrentReads:
 class TestWriteBlocksReads:
     def test_index_blocks_search(self, tmp_path):
         """index_documents holds write lock, blocking concurrent search."""
-        from stele.engine import Stele
+        from stele_context.engine import Stele
 
         engine = Stele(storage_dir=str(tmp_path / "stele_data"))
         f = tmp_path / "initial.txt"
@@ -246,7 +246,7 @@ class TestBM25LazyInitThreadSafe:
 class TestAgentSessions:
     def test_agent_id_roundtrip(self, tmp_path):
         """Create session with agent_id, verify it's stored and queryable."""
-        from stele.engine import Stele
+        from stele_context.engine import Stele
 
         engine = Stele(storage_dir=str(tmp_path / "stele_data"))
 
@@ -266,7 +266,7 @@ class TestAgentSessions:
 
     def test_agent_id_backward_compat(self, tmp_path):
         """Calls without agent_id still work (agent_id defaults to None)."""
-        from stele.engine import Stele
+        from stele_context.engine import Stele
 
         engine = Stele(storage_dir=str(tmp_path / "stele_data"))
 
@@ -285,7 +285,7 @@ class TestAgentSessions:
 
     def test_list_sessions_filter(self, tmp_path):
         """list_sessions correctly filters by agent_id."""
-        from stele.engine import Stele
+        from stele_context.engine import Stele
 
         engine = Stele(storage_dir=str(tmp_path / "stele_data"))
 
@@ -309,7 +309,7 @@ class TestAgentSessions:
 
     def test_save_kv_state_with_agent_id(self, tmp_path):
         """save_kv_state with agent_id creates/updates session."""
-        from stele.engine import Stele
+        from stele_context.engine import Stele
 
         engine = Stele(storage_dir=str(tmp_path / "stele_data"))
 
@@ -336,7 +336,7 @@ class TestAgentSessions:
 def _worker_save(args):
     """Worker function for multiprocessing test."""
     index_dir, worker_id = args
-    from stele.index_store import _save_compressed_json
+    from stele_context.index_store import _save_compressed_json
 
     data = {"_version": 1, "worker": worker_id, "payload": list(range(100))}
     _save_compressed_json(data, "test_index.json.zlib", Path(index_dir))
@@ -346,7 +346,7 @@ def _worker_save(args):
 class TestFileLockConcurrentSave:
     def test_concurrent_saves_no_corruption(self, tmp_path):
         """Multiple processes saving to the same file don't corrupt it."""
-        from stele.index_store import _load_compressed_json
+        from stele_context.index_store import _load_compressed_json
 
         index_dir = tmp_path / "indices"
         index_dir.mkdir()

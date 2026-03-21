@@ -1,6 +1,6 @@
 """Tests for the .stele.toml configuration system."""
 
-from stele.config import load_config, apply_config, _parse_toml_minimal
+from stele_context.config import load_config, apply_config, _parse_toml_minimal
 
 
 class TestParseTomlMinimal:
@@ -143,7 +143,7 @@ class TestEngineConfigIntegration:
         # Create .git so project root detection works
         (tmp_path / ".git").mkdir()
 
-        from stele.engine import Stele
+        from stele_context.engine import Stele
 
         engine = Stele(
             project_root=str(tmp_path),
@@ -159,7 +159,7 @@ class TestEngineConfigIntegration:
         config_file.write_text("[stele]\nchunk_size = 512\n")
         (tmp_path / ".git").mkdir()
 
-        from stele.engine import Stele
+        from stele_context.engine import Stele
 
         engine = Stele(
             project_root=str(tmp_path),
@@ -171,7 +171,7 @@ class TestEngineConfigIntegration:
     def test_no_config_uses_defaults(self, tmp_path):
         (tmp_path / ".git").mkdir()
 
-        from stele.engine import Stele
+        from stele_context.engine import Stele
 
         engine = Stele(
             project_root=str(tmp_path),

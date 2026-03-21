@@ -1,6 +1,6 @@
 """Tests for Stele vector index."""
 
-from stele.index import HNSWIndex, VectorIndex
+from stele_context.index import HNSWIndex, VectorIndex
 
 
 class TestHNSWIndex:

@@ -4,16 +4,16 @@ import os
 import tempfile
 from pathlib import Path
 
-from stele.engine import Stele
-from stele.search_engine import extract_query_identifiers
-from stele.symbols import (
+from stele_context.engine import Stele
+from stele_context.search_engine import extract_query_identifiers
+from stele_context.symbols import (
     SymbolExtractor,
     Symbol,
     resolve_symbols,
     _module_matches_path,
     _NOISE_REFS,
 )
-from stele.symbol_storage import SymbolStorage
+from stele_context.symbol_storage import SymbolStorage
 
 
 # -- SymbolExtractor unit tests ----------------------------------------------

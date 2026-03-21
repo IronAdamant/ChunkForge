@@ -72,8 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Search with edges** — `search()` results now include `edges.depends_on` and `edges.depended_on_by` for each chunk, showing symbol connections without extra round-trips.
 - **Module path resolution** — `from pkg.utils import helper` now prefers `helper` defined in `pkg/utils.py` over an unrelated `helper` in another file. Reduces false edges in multi-project indexes.
 - **Symbol re-extraction on change** — `detect_changes_and_update()` re-extracts symbols and rebuilds edges for modified documents, keeping the graph in sync.
-- **`stele/symbols.py`** (~530 LOC) — `SymbolExtractor` class, `resolve_symbols()` with module path hints, `_module_matches_path()` helper.
-- **`stele/symbol_storage.py`** (~200 LOC) — `SymbolStorage` delegate; `symbols` and `symbol_edges` SQLite tables with indexed queries.
+- **`stele_context/symbols.py`** (~530 LOC) — `SymbolExtractor` class, `resolve_symbols()` with module path hints, `_module_matches_path()` helper.
+- **`stele_context/symbol_storage.py`** (~200 LOC) — `SymbolStorage` delegate; `symbols` and `symbol_edges` SQLite tables with indexed queries.
 - **`tests/test_symbols.py`** (63 tests) — Symbol extraction, cross-language resolution, storage, engine integration, directory indexing, staleness, search-with-edges, skip-dirs, module path resolution.
 - `staleness_score REAL DEFAULT 0.0` column on chunks table (added via migration).
 - **Noise filter** — `_NOISE_REFS` frozenset (~60 entries) filters Python builtins, dunder methods, JS globals, and ambiguous method names (get, set, push, etc.) from symbol resolution. Reduces false edges by ~14% without losing real cross-file connections.
@@ -93,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Hybrid search (BM25 + HNSW)** — `search()` widens HNSW to 3x candidates and re-ranks with BM25 keyword scores. Blend controlled by `search_alpha` (default 0.7). BM25 index lazily initialized on first search, persisted alongside HNSW.
-- **`stele/bm25.py`** — Pure-Python Okapi BM25 keyword index with zero dependencies. Includes `to_dict()`/`from_dict()` for persistence.
+- **`stele_context/bm25.py`** — Pure-Python Okapi BM25 keyword index with zero dependencies. Includes `to_dict()`/`from_dict()` for persistence.
 - **BM25 persistence** — BM25 index serialized to `indices/bm25_index.json.zlib` with same staleness detection as HNSW. Loaded from disk on first search instead of rebuilding from SQLite.
 - **Search alpha auto-tuning** — `_compute_search_alpha()` detects code-like queries (identifiers, brackets, keywords) and lowers alpha to weight keyword matching more heavily.
 - **Per-modality thresholds** — `MODALITY_THRESHOLDS` dict: code uses merge=0.85 (preserves AST boundaries) and change=0.80 (tolerates incremental edits); text and PDF keep existing defaults

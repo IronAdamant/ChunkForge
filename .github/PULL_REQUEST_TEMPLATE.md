@@ -36,13 +36,13 @@ Closes #(issue number)
 pytest
 
 # Run with coverage
-pytest --cov=stele --cov-report=term-missing
+pytest --cov=stele_context --cov-report=term-missing
 
 # Type checking
-mypy stele/
+mypy stele_context/
 
 # Linting
-ruff check stele/
+ruff check stele_context/
 ```
 
 ## Documentation

@@ -1,7 +1,7 @@
 """Tests for chunk history query tools."""
 
-from stele.storage import StorageBackend
-from stele.engine import Stele
+from stele_context.storage import StorageBackend
+from stele_context.engine import Stele
 
 
 class TestStorageChunkHistory:

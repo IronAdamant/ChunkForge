@@ -14,7 +14,7 @@ import time
 
 import pytest
 
-from stele.engine import Stele
+from stele_context.engine import Stele
 
 
 @pytest.fixture

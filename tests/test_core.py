@@ -1,7 +1,7 @@
 """Tests for Stele core functionality (backward compat)."""
 
-from stele import Stele, __version__
-from stele.core import Chunk
+from stele_context import Stele, __version__
+from stele_context.core import Chunk
 
 
 class TestChunk:
@@ -202,7 +202,7 @@ class TestStorageBackend:
 
     def test_initialization(self, tmp_path):
         """Test storage backend initialization."""
-        from stele.storage import StorageBackend
+        from stele_context.storage import StorageBackend
 
         storage_dir = str(tmp_path / "storage")
         storage = StorageBackend(base_dir=storage_dir)
@@ -214,7 +214,7 @@ class TestStorageBackend:
 
     def test_store_and_retrieve_chunk(self, tmp_path):
         """Test storing and retrieving chunks."""
-        from stele.storage import StorageBackend
+        from stele_context.storage import StorageBackend
 
         storage_dir = str(tmp_path / "storage")
         storage = StorageBackend(base_dir=storage_dir)
@@ -246,7 +246,7 @@ class TestStorageBackend:
 
     def test_create_and_get_session(self, tmp_path):
         """Test creating and retrieving sessions."""
-        from stele.storage import StorageBackend
+        from stele_context.storage import StorageBackend
 
         storage_dir = str(tmp_path / "storage")
         storage = StorageBackend(base_dir=storage_dir)

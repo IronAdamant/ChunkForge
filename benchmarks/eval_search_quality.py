@@ -1369,7 +1369,7 @@ def _print_results(results: List[Dict]) -> None:
 
 
 def main() -> None:
-    from stele.engine import Stele
+    from stele_context.engine import Stele
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Write corpus

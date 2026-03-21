@@ -13,9 +13,9 @@ import statistics
 import tempfile
 import time
 
-from stele.index import VectorIndex
-from stele.bm25 import BM25Index
-from stele.engine import Stele
+from stele_context.index import VectorIndex
+from stele_context.bm25 import BM25Index
+from stele_context.engine import Stele
 
 _QUICK = os.environ.get("STELE_BENCH_QUICK") == "1"
 

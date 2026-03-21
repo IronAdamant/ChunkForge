@@ -37,8 +37,8 @@ This project adheres to a Code of Conduct. By participating, you are expected to
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/stele.git
-cd stele
+git clone https://github.com/YOUR_USERNAME/stele-context.git
+cd stele-context
 
 # Create a virtual environment
 python -m venv venv
@@ -55,7 +55,7 @@ pip install -e ".[dev]"
 pytest
 
 # Check code style
-mypy stele/
+mypy stele_context/
 
 # Run CLI
 stele --version
@@ -101,7 +101,7 @@ We welcome contributions in these areas:
 pytest
 
 # Run with coverage
-pytest --cov=stele --cov-report=html
+pytest --cov=stele_context --cov-report=html
 
 # Run specific test file
 pytest tests/test_core.py
@@ -113,7 +113,7 @@ pytest tests/test_core.py::TestStele::test_index_documents
 ### Writing Tests
 
 - Place tests in the `tests/` directory
-- Mirror the source structure: `tests/test_core.py` for `stele/core.py`
+- Mirror the source structure: `tests/test_core.py` for `stele_context/core.py`
 - Use pytest fixtures for common setup
 - Aim for >90% coverage on new code
 
@@ -121,7 +121,7 @@ Example test:
 
 ```python
 import pytest
-from stele import Stele
+from stele_context import Stele
 
 def test_index_documents(tmp_path):
     """Test document indexing."""
@@ -200,14 +200,14 @@ We use:
 
 ```bash
 # Format code
-black stele/ tests/
-isort stele/ tests/
+black stele_context/ tests/
+isort stele_context/ tests/
 
 # Check types
-mypy stele/
+mypy stele_context/
 
 # Lint
-ruff check stele/ tests/
+ruff check stele_context/ tests/
 ```
 
 ### Principles

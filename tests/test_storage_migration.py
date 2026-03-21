@@ -4,7 +4,7 @@ import json
 import sqlite3
 import zlib
 
-from stele.storage import StorageBackend
+from stele_context.storage import StorageBackend
 
 
 class TestStorageMigration:

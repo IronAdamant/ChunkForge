@@ -14,8 +14,8 @@ import statistics
 import time
 import tracemalloc
 
-from stele.bm25 import BM25Index
-from stele.index import VectorIndex
+from stele_context.bm25 import BM25Index
+from stele_context.index import VectorIndex
 
 _QUICK = os.environ.get("STELE_BENCH_QUICK") == "1"
 

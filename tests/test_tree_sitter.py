@@ -2,7 +2,7 @@
 
 import pytest
 
-from stele.chunkers.code import CodeChunker, HAS_TREE_SITTER
+from stele_context.chunkers.code import CodeChunker, HAS_TREE_SITTER
 
 
 @pytest.mark.skipif(not HAS_TREE_SITTER, reason="tree-sitter not installed")

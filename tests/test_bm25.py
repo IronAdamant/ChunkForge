@@ -1,7 +1,7 @@
 """Tests for BM25 keyword index."""
 
-from stele.bm25 import BM25Index
-from stele.index_store import save_bm25, load_bm25_if_fresh
+from stele_context.bm25 import BM25Index
+from stele_context.index_store import save_bm25, load_bm25_if_fresh
 
 
 class TestBM25Index:

@@ -1,7 +1,7 @@
 """Tests for Stele session management."""
 
-from stele.engine import Stele
-from stele.session import SessionManager
+from stele_context.engine import Stele
+from stele_context.session import SessionManager
 
 
 class TestSessionManager:

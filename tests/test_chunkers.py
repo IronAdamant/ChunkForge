@@ -1,8 +1,8 @@
 """Tests for Stele chunkers."""
 
-from stele.chunkers.text import TextChunker
-from stele.chunkers.code import CodeChunker
-from stele.chunkers.base import Chunk
+from stele_context.chunkers.text import TextChunker
+from stele_context.chunkers.code import CodeChunker
+from stele_context.chunkers.base import Chunk
 
 
 class TestTextChunker:

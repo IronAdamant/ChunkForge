@@ -27,7 +27,7 @@ Provide any relevant context for your question:
 
 ```python
 # Paste relevant code here
-from stele import Stele
+from stele_context import Stele
 
 cf = Stele()
 # Your code

@@ -36,7 +36,7 @@ Paste any error messages or stack traces here
 - **Stele Version**: [e.g., 0.1.0]
 - **Python Version**: [e.g., 3.12.0]
 - **Operating System**: [e.g., Ubuntu 22.04, macOS 14.0, Windows 11]
-- **Installation Method**: [e.g., pip install -e ., pip install stele]
+- **Installation Method**: [e.g., pip install -e ., pip install stele-context]
 
 ## Additional Context
 

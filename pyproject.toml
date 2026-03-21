@@ -90,8 +90,8 @@ dev = [
 ]
 
 [project.scripts]
-stele = "stele.cli:main"
-stele-mcp = "stele.mcp_stdio:main"
+stele = "stele_context.cli:main"
+stele-mcp = "stele_context.mcp_stdio:main"
 
 [project.urls]
 Homepage = "https://github.com/IronAdamant/stele-context"
@@ -100,18 +100,18 @@ Documentation = "https://github.com/IronAdamant/stele-context#readme"
 
 [tool.coverage.run]
 omit = [
-    "stele/cli.py",
-    "stele/cli_metadata.py",
-    "stele/mcp_stdio.py",
-    "stele/chunkers/audio.py",
-    "stele/chunkers/image.py",
-    "stele/chunkers/pdf.py",
-    "stele/chunkers/video.py",
+    "stele_context/cli.py",
+    "stele_context/cli_metadata.py",
+    "stele_context/mcp_stdio.py",
+    "stele_context/chunkers/audio.py",
+    "stele_context/chunkers/image.py",
+    "stele_context/chunkers/pdf.py",
+    "stele_context/chunkers/video.py",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["stele*"]
+include = ["stele_context*"]
 
 [tool.setuptools.package-data]
-stele = ["py.typed"]
+stele_context = ["py.typed"]

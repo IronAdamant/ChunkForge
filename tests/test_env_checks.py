@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from stele.env_checks import (
+from stele_context.env_checks import (
     check_editable_installs,
     clean_stale_pycache,
     scan_stale_pycache,

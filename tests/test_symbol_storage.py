@@ -1,7 +1,7 @@
 """Tests for SymbolStorage: persistent symbol and edge storage."""
 
-from stele.symbol_patterns import Symbol
-from stele.symbol_storage import SymbolStorage
+from stele_context.symbol_patterns import Symbol
+from stele_context.symbol_storage import SymbolStorage
 
 
 def _make_storage(tmp_path):

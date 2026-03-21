@@ -11,7 +11,7 @@ import hashlib
 
 import pytest
 
-from stele.chunkers.base import BaseChunker, Chunk, _TOKEN_RE, estimate_tokens
+from stele_context.chunkers.base import BaseChunker, Chunk, _TOKEN_RE, estimate_tokens
 
 
 # ---------------------------------------------------------------------------

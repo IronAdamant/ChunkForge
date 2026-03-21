@@ -2,7 +2,7 @@
 
 import time
 
-from stele.engine import Stele
+from stele_context.engine import Stele
 
 
 def _make_engine(tmp_path):

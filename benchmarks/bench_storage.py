@@ -12,7 +12,7 @@ import statistics
 import tempfile
 import time
 
-from stele.storage import StorageBackend
+from stele_context.storage import StorageBackend
 
 _QUICK = os.environ.get("STELE_BENCH_QUICK") == "1"
 

@@ -151,8 +151,8 @@ Coordination DB (`<git-common-dir>/stele/coordination.db`):
 ```bash
 pip install -e ".[dev]"
 pytest                    # 574 tests (573 pass, 1 skipped without mcp SDK)
-mypy stele/
-ruff check stele/
+mypy stele_context/
+ruff check stele_context/
 ```
 
 Entry points: `stele` (CLI), `stele-mcp` (MCP stdio server)
@@ -173,5 +173,5 @@ When using Stele's MCP tools during refactoring:
 ### Multi-agent coordination rules
 - **Atomic transformations**: Never split "remove X" and "replace X with Y" across parallel agents. Both steps must happen atomically per file.
 - **No overlapping files**: Parallel agents must work on disjoint file sets.
-- **Lint between batches**: Run `ruff check stele/` after each agent completes, not just at the end.
+- **Lint between batches**: Run `ruff check stele_context/` after each agent completes, not just at the end.
 - **Reindex after passes**: After a batch of changes, reindex before the next agent reads.

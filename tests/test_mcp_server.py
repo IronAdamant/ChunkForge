@@ -9,8 +9,8 @@ import json
 import urllib.request
 import urllib.error
 
-from stele.engine import Stele
-from stele.mcp_server import MCPServer, _TOOL_SCHEMAS
+from stele_context.engine import Stele
+from stele_context.mcp_server import MCPServer, _TOOL_SCHEMAS
 
 
 class TestHTTPServer:

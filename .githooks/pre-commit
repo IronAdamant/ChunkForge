@@ -4,12 +4,12 @@
 set -e
 
 echo "pre-commit: ruff check..."
-ruff check stele/ tests/
+ruff check stele_context/ tests/
 
 echo "pre-commit: ruff format..."
-ruff format --check stele/ tests/
+ruff format --check stele_context/ tests/
 
 echo "pre-commit: mypy..."
-mypy stele/ --ignore-missing-imports
+mypy stele_context/ --ignore-missing-imports
 
 echo "pre-commit: all checks passed."

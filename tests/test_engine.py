@@ -1,9 +1,9 @@
 """Tests for Stele engine."""
 
-from stele import __version__
-from stele.engine import Stele
-from stele.chunkers.base import Chunk
-from stele.indexing import merge_similar_chunks
+from stele_context import __version__
+from stele_context.engine import Stele
+from stele_context.chunkers.base import Chunk
+from stele_context.indexing import merge_similar_chunks
 
 
 class TestSteleEngine:

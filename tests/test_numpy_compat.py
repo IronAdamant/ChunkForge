@@ -5,7 +5,7 @@ import struct
 
 import pytest
 
-from stele.chunkers.numpy_compat import (
+from stele_context.chunkers.numpy_compat import (
     cosine_similarity,
     sig_from_bytes,
     sig_to_bytes,

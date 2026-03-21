@@ -5,9 +5,9 @@ import threading
 
 import pytest
 
-from stele import __version__
-from stele.engine import Stele
-from stele.mcp_stdio import HAS_MCP
+from stele_context import __version__
+from stele_context.engine import Stele
+from stele_context.mcp_stdio import HAS_MCP
 
 
 class TestMCPStdioServer:
@@ -19,7 +19,7 @@ class TestMCPStdioServer:
 
     def test_create_engine(self, tmp_path):
         """Test engine creation helper."""
-        from stele.mcp_stdio import _create_engine
+        from stele_context.mcp_stdio import _create_engine
 
         engine = _create_engine(str(tmp_path / "storage"))
         assert isinstance(engine, Stele)
@@ -27,14 +27,14 @@ class TestMCPStdioServer:
     @pytest.mark.skipif(not HAS_MCP, reason="MCP SDK not installed")
     def test_create_server(self, tmp_path):
         """Test server creation with tool registration."""
-        from stele.mcp_stdio import create_server
+        from stele_context.mcp_stdio import create_server
 
         server = create_server(str(tmp_path / "storage"))
         assert server is not None
 
     def test_main_without_mcp_exits(self, tmp_path):
         """Test that main() exits gracefully without MCP SDK."""
-        from stele import mcp_stdio
+        from stele_context import mcp_stdio
 
         if mcp_stdio.HAS_MCP:
             pytest.skip("MCP SDK is installed")
@@ -291,7 +291,7 @@ class TestMCPResourceLogic:
     @pytest.mark.skipif(not HAS_MCP, reason="MCP SDK not installed")
     def test_server_registers_resources(self, tmp_path):
         """Test create_server registers resource and template handlers."""
-        from stele.mcp_stdio import create_server
+        from stele_context.mcp_stdio import create_server
 
         bundle = create_server(str(tmp_path / "storage"))
         assert bundle is not None

@@ -28,7 +28,7 @@ jobs:
 
     - name: Run tests
       run: |
-        pytest --cov=stele --cov-report=xml --cov-report=term-missing --cov-fail-under=80
+        pytest --cov=stele_context --cov-report=xml --cov-report=term-missing --cov-fail-under=80
 
     - name: Upload coverage
       if: matrix.python-version == '3.12'
@@ -55,7 +55,7 @@ jobs:
 
     - name: Run mypy
       run: |
-        mypy stele/ --ignore-missing-imports
+        mypy stele_context/ --ignore-missing-imports
 
   lint:
     runs-on: ubuntu-latest
@@ -74,5 +74,5 @@ jobs:
 
     - name: Run ruff
       run: |
-        ruff check stele/ tests/
-        ruff format --check stele/ tests/
+        ruff check stele_context/ tests/
+        ruff format --check stele_context/ tests/

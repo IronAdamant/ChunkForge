@@ -84,7 +84,7 @@ graph TB
 ## Installation
 
 ```bash
-# From PyPI (import as: import stele)
+# From PyPI (import as: import stele_context)
 pip install stele-context
 
 # With optional extras
@@ -93,7 +93,7 @@ pip install stele-context[tree-sitter]    # AST-aware code chunking
 pip install stele-context[all]            # everything
 ```
 
-> **Note:** The PyPI package is `stele-context` but the import name is `stele`.
+> **Note:** The PyPI package is `stele-context` and the import name is `stele_context`.
 
 ```bash
 # From source
@@ -203,7 +203,7 @@ All values are optional — constructor params and env vars override config file
 ## Python API
 
 ```python
-from stele import Stele
+from stele_context import Stele
 
 engine = Stele()
 
@@ -454,7 +454,7 @@ By default, `<project_root>/.stele/` (each git worktree gets its own). Override 
 
 ## Troubleshooting
 
-**`ImportError: No module named 'stele'`**
+**`ImportError: No module named 'stele_context'`**
 Ensure Stele is installed: `pip install -e .` from the repo root. If using a virtualenv, make sure it's activated.
 
 **MCP server not connecting in Claude Desktop**
@@ -467,7 +467,7 @@ Another agent holds a lock on the document. Check with `get_document_lock_status
 The HNSW index adapts search width automatically. For 10K+ chunks, search uses 4x `ef_search`. If still slow, reduce `top_k` or check that the BM25 index isn't being rebuilt on every query (it's lazy-loaded once).
 
 **Tree-sitter not working for a language**
-Verify the grammar package is installed: `pip install tree-sitter-javascript` (etc.). Check with: `python -c "from stele.chunkers.code import HAS_TREE_SITTER; print(HAS_TREE_SITTER)"`.
+Verify the grammar package is installed: `pip install tree-sitter-javascript` (etc.). Check with: `python -c "from stele_context.chunkers.code import HAS_TREE_SITTER; print(HAS_TREE_SITTER)"`.
 
 **Stale `.pyc` files causing issues**
 Run `stele` with the `environment_check` MCP tool, or call `engine.check_environment()`. Use `engine.clean_bytecache()` to remove orphaned `.pyc` files.
@@ -477,10 +477,10 @@ Run `stele` with the `environment_check` MCP tool, or call `engine.check_environ
 ```bash
 pip install -e ".[dev]"
 pytest                              # 573 tests
-pytest --cov=stele                  # With coverage
+pytest --cov=stele_context           # With coverage
 python benchmarks/run_all.py        # Performance benchmarks
-mypy stele/                         # Type checking
-ruff check stele/                   # Linting
+mypy stele_context/                 # Type checking
+ruff check stele_context/           # Linting
 ```
 
 Entry points: `stele` (CLI), `stele-mcp` (MCP stdio server)

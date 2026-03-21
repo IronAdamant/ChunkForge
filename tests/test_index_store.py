@@ -1,8 +1,8 @@
 """Tests for persistent HNSW index serialization."""
 
-from stele.engine import Stele
-from stele.index import HNSWIndex, VectorIndex
-from stele.index_store import (
+from stele_context.engine import Stele
+from stele_context.index import HNSWIndex, VectorIndex
+from stele_context.index_store import (
     INDEX_FILENAME,
     _load_compressed_json,
     compute_chunk_ids_hash,

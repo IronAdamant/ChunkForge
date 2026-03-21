@@ -17,7 +17,7 @@ Chronological record of development activity on Stele, maintained for LLM agent 
 - Removed production `assert` in `image.py` (replaced with type annotation)
 
 ### Improvements
-- Added `Chunk` to `stele/__init__.py` exports — key public type was missing from package root
+- Added `Chunk` to `stele_context/__init__.py` exports — key public type was missing from package root
 
 ### Documentation
 - Updated README MCP tools section: accurate 42-tool count for both servers, complete tool listing

@@ -30,7 +30,7 @@ Describe the use case(s) for this feature:
 
 ```python
 # Show how the feature would be used
-from stele import Stele
+from stele_context import Stele
 
 cf = Stele()
 # Example code using the new feature

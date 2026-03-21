@@ -13,8 +13,8 @@ import os
 
 import pytest
 
-from stele.engine import Stele
-from stele.engine_utils import detect_project_root
+from stele_context.engine import Stele
+from stele_context.engine_utils import detect_project_root
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +324,7 @@ class TestAutoLocking:
 class TestMCPAgentId:
     def test_http_server_generates_agent_id(self):
         """MCPServer generates a unique agent_id."""
-        from stele.mcp_server import MCPServer
+        from stele_context.mcp_server import MCPServer
         from unittest.mock import MagicMock
 
         stele = MagicMock()
@@ -334,7 +334,7 @@ class TestMCPAgentId:
 
     def test_http_server_custom_agent_id(self):
         """MCPServer accepts a custom agent_id."""
-        from stele.mcp_server import MCPServer
+        from stele_context.mcp_server import MCPServer
         from unittest.mock import MagicMock
 
         stele = MagicMock()
@@ -343,7 +343,7 @@ class TestMCPAgentId:
 
     def test_http_write_tool_injects_agent_id(self, tmp_path):
         """HTTP server injects agent_id for write operations."""
-        from stele.mcp_handlers import build_tool_map, execute_tool
+        from stele_context.mcp_handlers import build_tool_map, execute_tool
 
         e = Stele(storage_dir=str(tmp_path / "storage"))
         f = tmp_path / "test.txt"
@@ -363,7 +363,7 @@ class TestMCPAgentId:
 
     def test_http_read_tool_no_injection(self, tmp_path):
         """HTTP server does not inject agent_id for read operations."""
-        from stele.mcp_handlers import build_tool_map, execute_tool
+        from stele_context.mcp_handlers import build_tool_map, execute_tool
 
         e = Stele(storage_dir=str(tmp_path / "storage"))
         tool_map = build_tool_map(e, {})
@@ -430,7 +430,7 @@ class TestWorktreeConflictScenario:
 class TestGitCommonDirDetection:
     def test_normal_repo(self, tmp_path):
         """Normal .git directory is its own common dir."""
-        from stele.coordination import detect_git_common_dir
+        from stele_context.coordination import detect_git_common_dir
 
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -442,7 +442,7 @@ class TestGitCommonDirDetection:
 
     def test_worktree_with_commondir(self, tmp_path):
         """Worktree .git file with commondir resolves to shared .git."""
-        from stele.coordination import detect_git_common_dir
+        from stele_context.coordination import detect_git_common_dir
 
         # Simulate main repo
         main = tmp_path / "main"
@@ -466,14 +466,14 @@ class TestGitCommonDirDetection:
 
     def test_no_git(self, tmp_path):
         """No .git → returns None."""
-        from stele.coordination import detect_git_common_dir
+        from stele_context.coordination import detect_git_common_dir
 
         result = detect_git_common_dir(tmp_path)
         assert result is None
 
     def test_none_project_root(self):
         """None project_root → returns None."""
-        from stele.coordination import detect_git_common_dir
+        from stele_context.coordination import detect_git_common_dir
 
         assert detect_git_common_dir(None) is None
 
@@ -481,7 +481,7 @@ class TestGitCommonDirDetection:
 class TestCoordinationBackend:
     @pytest.fixture
     def coord(self, tmp_path):
-        from stele.coordination import CoordinationBackend
+        from stele_context.coordination import CoordinationBackend
 
         git_dir = tmp_path / ".git"
         git_dir.mkdir()
@@ -642,7 +642,7 @@ class TestCoordinationIntegration:
 class TestEnvironmentChecks:
     def test_scan_stale_pycache(self, tmp_path):
         """Detects .pyc files with missing .py source."""
-        from stele.env_checks import scan_stale_pycache
+        from stele_context.env_checks import scan_stale_pycache
 
         cache = tmp_path / "pkg" / "__pycache__"
         cache.mkdir(parents=True)
@@ -654,7 +654,7 @@ class TestEnvironmentChecks:
 
     def test_scan_non_stale_pycache(self, tmp_path):
         """Non-stale .pyc (source exists) is not flagged."""
-        from stele.env_checks import scan_stale_pycache
+        from stele_context.env_checks import scan_stale_pycache
 
         pkg = tmp_path / "pkg"
         pkg.mkdir()
@@ -668,7 +668,7 @@ class TestEnvironmentChecks:
 
     def test_clean_stale_pycache(self, tmp_path):
         """Removes orphaned .pyc files."""
-        from stele.env_checks import clean_stale_pycache
+        from stele_context.env_checks import clean_stale_pycache
 
         cache = tmp_path / "pkg" / "__pycache__"
         cache.mkdir(parents=True)
@@ -705,7 +705,7 @@ class TestEnvironmentChecks:
 
     def test_check_editable_installs(self, tmp_path):
         """check_editable_installs runs without error."""
-        from stele.env_checks import check_editable_installs
+        from stele_context.env_checks import check_editable_installs
 
         result = check_editable_installs(tmp_path)
         assert "editable_issues" in result
@@ -801,7 +801,7 @@ class TestChangeNotifications:
 class TestSymbolGraphExtraction:
     def test_symbol_manager_initialized(self, tmp_path):
         """Engine creates SymbolGraphManager on init."""
-        from stele.symbol_graph import SymbolGraphManager
+        from stele_context.symbol_graph import SymbolGraphManager
 
         e = Stele(
             storage_dir=str(tmp_path / "storage"),
