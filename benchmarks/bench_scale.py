@@ -1,8 +1,8 @@
 """Benchmark HNSW and BM25 at scale for Stele.
 
 Measures insert time, search latency, and memory usage at increasing
-chunk counts.  HNSW scales: 2K/5K/10K (FULL) or 500/1K/2K (QUICK).
-BM25 scales: 10K/50K (FULL) or 1K/5K/10K (QUICK).  Uses _QUICK mode
+chunk counts.  HNSW scales: 500/1K/2K (FULL) or 100/500 (QUICK).
+BM25 scales: 1K/5K/10K (FULL) or 500/1K (QUICK).  Uses _QUICK mode
 (env STELE_BENCH_QUICK=1) for reduced sizes suitable for CI.
 """
 
@@ -21,8 +21,8 @@ _QUICK = os.environ.get("STELE_BENCH_QUICK") == "1"
 
 # Pure-Python HNSW runs at ~15 inserts/s, so scales are chosen to keep
 # total runtime reasonable (~2 min QUICK, ~30 min FULL).
-HNSW_SCALES = [500, 1_000, 2_000] if _QUICK else [2_000, 5_000, 10_000]
-BM25_SCALES = [1_000, 5_000, 10_000] if _QUICK else [10_000, 50_000]
+HNSW_SCALES = [100, 500] if _QUICK else [500, 1_000, 2_000]
+BM25_SCALES = [500, 1_000] if _QUICK else [1_000, 5_000, 10_000]
 SEARCH_ITERATIONS = 3 if not _QUICK else 2
 INSERT_ITERATIONS = 1
 K = 10
