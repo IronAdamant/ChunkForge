@@ -119,6 +119,8 @@ Backward compat: core.py re-exports Stele + Chunk
 - **No redundant commits**: All modules using `connect()` or `with self._connect() as conn:` context managers never call `conn.commit()` inside the block — the context manager auto-commits on successful exit. This applies to storage modules, coordination modules (`coordination.py`, `agent_registry.py`, `change_notifications.py`), and `storage_schema.py`.
 - **MCP stdio server bundle**: `_ServerBundle` dataclass holds server, engine, and agent_id together. Replaces monkey-patching `_stele_engine`/`_stele_agent_id` onto the MCP Server object.
 - **Index store context managers**: Lock file handles in `index_store.py` use `with` statements for guaranteed cleanup. Read path uses nested try/finally to ensure unlock before close.
+- **WAL checkpoint on close**: `StorageBackend.close()` runs `PRAGMA wal_checkpoint(TRUNCATE)` before closing pooled connections. Prevents unbounded WAL file growth for long-running servers.
+- **Typing protocols**: `protocols.py` defines `StorageProto`, `VectorIndexProto`, `SymbolManagerProto`, and `CoordinationProto` as structural protocol types for the delegation boundary. Used as `TYPE_CHECKING`-only documentation — delegation functions keep `Any` at runtime to avoid import cycles, but IDEs and developers can reference the protocols for the exact expected interface.
 
 ## SQLite Tables
 
@@ -150,7 +152,7 @@ Coordination DB (`<git-common-dir>/stele-context/coordination.db`):
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 708 tests (708 pass, 1 skipped without mcp SDK)
+pytest                    # 739 tests (739 pass, 1 skipped without mcp SDK)
 mypy stele_context/
 ruff check stele_context/
 ```

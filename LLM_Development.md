@@ -2,6 +2,25 @@
 
 Chronological record of development activity on Stele Context, maintained for LLM agent context.
 
+## 2026-03-22 - v0.10.6 1.0 Readiness Items
+
+### Infrastructure
+- Added SECURITY.md with vulnerability reporting process and security design documentation
+- Added Windows and macOS CI runners (`test-platform` job with Python 3.12)
+- Created git tags for all untagged versions: v0.9.0, v0.9.1, v0.9.2, v0.9.3, v0.10.0–v0.10.5
+- Updated CHANGELOG.md through v0.10.6
+
+### Type safety
+- Created `protocols.py` with structural Protocol types for delegation boundaries: `StorageProto`, `VectorIndexProto`, `SymbolManagerProto`, `CoordinationProto`
+- Protocols are `TYPE_CHECKING`-only — delegation functions keep `Any` at runtime to avoid import cycles, but IDEs/developers can reference protocols for the exact expected interface
+
+### Bug fixes
+- Added `PRAGMA wal_checkpoint(TRUNCATE)` to `StorageBackend.close()` — prevents unbounded WAL file growth for long-running servers
+
+### New tests (739 total, was 708)
+- `test_media_chunkers.py`: Media chunker extensions, HAS_* flags, modality detection routing (30 tests)
+- Signature cache test appended to `test_engine.py`: verifies unchanged content re-uses cached signatures during re-indexing
+
 ## 2026-03-22 - v0.10.5 CI Fix + Test Coverage Expansion
 
 ### CI fixes

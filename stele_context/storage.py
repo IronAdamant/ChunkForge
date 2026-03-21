@@ -84,8 +84,13 @@ class StorageBackend(StorageDelegatesMixin):
         migrate_database(self.db_path)
 
     def close(self) -> None:
-        """Close all pooled connections. Safe to call multiple times."""
+        """Close all pooled connections and checkpoint WAL. Safe to call multiple times."""
         if self._pool is not None:
+            try:
+                conn = self._pool.get()
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except Exception:
+                pass
             self._pool.close_all()
 
     # -- Core chunk operations ------------------------------------------------

@@ -33,6 +33,8 @@
 | `stele_context/change_notifications.py` | Change notification storage for coordination DB | None | test_worktree_safety.py |
 | `stele_context/agent_registry.py` | Agent registration, heartbeat, reaping | None | test_worktree_safety.py |
 | `stele_context/env_checks.py` | Stale bytecache + editable install detection | None | test_env_checks.py |
+| `stele_context/protocols.py` | Typing protocols for delegation boundaries | None | (static analysis only) |
+| `stele_context/stemmer.py` | Pure-Python Porter stemmer, identifier splitting | None | test_stemmer.py |
 | `stele_context/chunkers/__init__.py` | Chunker registry, auto-detection | all chunkers | test_chunkers.py |
 | `stele_context/chunkers/base.py` | `Chunk` dataclass, `BaseChunker` ABC, `estimate_tokens()` | None | test_base_chunker.py |
 | `stele_context/chunkers/numpy_compat.py` | Pure-Python `sig_to_bytes`, `cosine_similarity` | None | test_numpy_compat.py |
@@ -84,5 +86,6 @@
 | `tests/test_cli.py` | CLI commands, argument parsing, JSON output | ~30 |
 | `tests/test_search_engine.py` | Search alpha tuning, identifier extraction, signatures | ~30 |
 | `tests/test_connection_pool.py` | Thread-local pool, connect() context manager, search_text edges | ~40 |
+| `tests/test_media_chunkers.py` | Media chunker extensions, HAS_* flags, modality detection | ~30 |
 
-**Total: 708 tests (1 skipped without MCP SDK)**
+**Total: 739 tests (1 skipped without MCP SDK)**

@@ -343,3 +343,46 @@ def multiply(a, b):
         scoped = cf.search_text("import os", document_path=str(f1))
         assert all_results["chunk_count"] >= 2
         assert scoped["chunk_count"] == 1
+
+    def test_signature_cache_reuses_signatures_on_reindex(self, tmp_path):
+        """Signature cache injects saved signatures for unchanged chunks on re-index.
+
+        On force re-index of identical content every chunk signature must be
+        byte-for-byte identical (cache hit).  After changing the content at
+        least one signature must differ (cache miss → recomputed).
+        """
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
+        py_file = tmp_path / "sample.py"
+        py_file.write_text("def foo():\n    return 1\n\ndef bar():\n    return 2\n")
+
+        cf.index_documents([str(py_file)])
+
+        # Capture signatures after first index
+        chunks_v1 = cf.storage.get_document_chunks(cf._normalize_path(str(py_file)))
+        assert chunks_v1, "expected at least one chunk after initial index"
+        sigs_v1 = {c["chunk_id"]: c["semantic_signature"] for c in chunks_v1}
+
+        # Force re-index with identical content — cache must be used
+        cf.index_documents([str(py_file)], force_reindex=True)
+        chunks_v2 = cf.storage.get_document_chunks(cf._normalize_path(str(py_file)))
+        sigs_v2 = {c["chunk_id"]: c["semantic_signature"] for c in chunks_v2}
+
+        shared_ids = set(sigs_v1) & set(sigs_v2)
+        assert shared_ids, "expected overlapping chunk IDs after identical re-index"
+        for cid in shared_ids:
+            assert sigs_v1[cid] == sigs_v2[cid], (
+                f"chunk {cid}: signature changed despite identical content"
+            )
+
+        # Modify content — at least one signature must change
+        py_file.write_text("def foo():\n    return 99\n\ndef bar():\n    return 2\n")
+        cf.index_documents([str(py_file)], force_reindex=True)
+        chunks_v3 = cf.storage.get_document_chunks(cf._normalize_path(str(py_file)))
+        sigs_v3 = {c["chunk_id"]: c["semantic_signature"] for c in chunks_v3}
+
+        all_same = all(
+            sigs_v2.get(cid) == sigs_v3.get(cid) for cid in set(sigs_v2) | set(sigs_v3)
+        )
+        assert not all_same, (
+            "expected at least one signature to change after content edit"
+        )

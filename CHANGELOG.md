@@ -5,6 +5,17 @@ All notable changes to Stele Context will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.6] - 2026-03-22
+
+### Added
+- **SECURITY.md**: Vulnerability reporting process, scope definitions, security design principles
+- **Windows/macOS CI**: New `test-platform` job runs tests on `macos-latest` and `windows-latest` with Python 3.12
+- **Typing protocols**: `protocols.py` defines `StorageProto`, `VectorIndexProto`, `SymbolManagerProto`, `CoordinationProto` for type-safe delegation boundaries (TYPE_CHECKING-only, no runtime overhead)
+- **WAL checkpoint on close**: `StorageBackend.close()` runs `PRAGMA wal_checkpoint(TRUNCATE)` to prevent unbounded WAL growth
+- **Media chunker tests**: `test_media_chunkers.py` covers extensions, HAS_* flags, and modality detection (works without optional deps)
+- **Signature cache test**: Verifies unchanged content re-uses cached semantic signatures during re-indexing
+- **Git tags**: Created tags v0.9.0 through v0.10.5 for all previously untagged releases
+
 ## [0.10.5] - 2026-03-22
 
 ### Fixed
