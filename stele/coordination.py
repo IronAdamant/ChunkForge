@@ -82,9 +82,10 @@ class CoordinationBackend:
         self._init_database()
 
     def _connect(self) -> sqlite3.Connection:
-        """Create a connection with WAL mode and busy timeout."""
+        """Create a connection with WAL mode, busy timeout, and perf PRAGMAs."""
         conn = sqlite3.connect(self.db_path)
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=5000")
         conn.row_factory = sqlite3.Row
         return conn
@@ -108,11 +109,23 @@ class CoordinationBackend:
                     agent_a TEXT NOT NULL,
                     agent_b TEXT NOT NULL,
                     conflict_type TEXT NOT NULL,
+                    expected_version INTEGER,
+                    actual_version INTEGER,
                     resolution TEXT DEFAULT 'rejected',
                     details_json TEXT,
                     created_at REAL NOT NULL
                 )
             """)
+            # Migration: add version columns to existing shared_conflicts
+            cursor = conn.execute("PRAGMA table_info(shared_conflicts)")
+            cols = {row[1] for row in cursor.fetchall()}
+            if "expected_version" not in cols:
+                conn.execute(
+                    "ALTER TABLE shared_conflicts ADD COLUMN expected_version INTEGER"
+                )
+                conn.execute(
+                    "ALTER TABLE shared_conflicts ADD COLUMN actual_version INTEGER"
+                )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS change_notifications (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -369,6 +382,8 @@ class CoordinationBackend:
         agent_a: str,
         agent_b: str,
         conflict_type: str,
+        expected_version: Optional[int] = None,
+        actual_version: Optional[int] = None,
         resolution: str = "rejected",
         details: Optional[Dict[str, Any]] = None,
     ) -> Optional[int]:
@@ -379,13 +394,16 @@ class CoordinationBackend:
             cursor = conn.execute(
                 "INSERT INTO shared_conflicts"
                 " (document_path, agent_a, agent_b, conflict_type,"
+                " expected_version, actual_version,"
                 " resolution, details_json, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     document_path,
                     agent_a,
                     agent_b,
                     conflict_type,
+                    expected_version,
+                    actual_version,
                     resolution,
                     details_json,
                     now,
@@ -403,6 +421,8 @@ class CoordinationBackend:
         agent_a: str,
         agent_b: str,
         conflict_type: str,
+        expected_version: Optional[int] = None,
+        actual_version: Optional[int] = None,
         resolution: str = "rejected",
         details: Optional[Dict[str, Any]] = None,
     ) -> Optional[int]:
@@ -413,6 +433,8 @@ class CoordinationBackend:
             agent_a,
             agent_b,
             conflict_type,
+            expected_version,
+            actual_version,
             resolution,
             details,
         )

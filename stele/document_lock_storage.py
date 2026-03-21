@@ -10,6 +10,7 @@ import json
 import sqlite3
 import time
 from pathlib import Path
+from stele.storage_schema import connect
 from typing import Any, Dict, List, Optional
 
 
@@ -39,7 +40,7 @@ class DocumentLockStorage:
         the lock is stolen and a conflict is logged.
         """
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT locked_by, locked_at, lock_ttl, doc_version "
@@ -92,7 +93,7 @@ class DocumentLockStorage:
         Only the lock holder can refresh.  Optionally sets a new TTL.
         """
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT locked_by, lock_ttl FROM documents WHERE document_path = ?",
                 (document_path,),
@@ -119,7 +120,7 @@ class DocumentLockStorage:
         agent_id: str,
     ) -> Dict[str, Any]:
         """Release ownership.  Only the holder can release."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT locked_by FROM documents WHERE document_path = ?",
                 (document_path,),
@@ -139,7 +140,7 @@ class DocumentLockStorage:
     def get_lock_status(self, document_path: str) -> Dict[str, Any]:
         """Check lock status.  Expired locks are reported as unlocked."""
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT locked_by, locked_at, lock_ttl "
@@ -165,7 +166,7 @@ class DocumentLockStorage:
 
     def release_agent_locks(self, agent_id: str) -> Dict[str, Any]:
         """Release all locks held by an agent (cleanup on disconnect)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT document_path FROM documents WHERE locked_by = ?",
                 (agent_id,),
@@ -183,7 +184,7 @@ class DocumentLockStorage:
     def reap_expired_locks(self) -> Dict[str, Any]:
         """Clear all expired locks.  Returns details of reaped locks."""
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT document_path, locked_by, locked_at, lock_ttl "
@@ -215,7 +216,7 @@ class DocumentLockStorage:
     def get_lock_stats(self) -> Dict[str, Any]:
         """Get aggregate lock and conflict statistics."""
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT COUNT(*) FROM documents WHERE locked_by IS NOT NULL"
             ).fetchone()
@@ -255,7 +256,7 @@ class DocumentLockStorage:
 
     def get_version(self, document_path: str) -> Optional[int]:
         """Get current version of a document."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT doc_version FROM documents WHERE document_path = ?",
                 (document_path,),
@@ -264,7 +265,7 @@ class DocumentLockStorage:
 
     def increment_version(self, document_path: str) -> int:
         """Atomically increment version, return new value."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 "UPDATE documents SET doc_version = doc_version + 1 "
                 "WHERE document_path = ?",
@@ -287,7 +288,7 @@ class DocumentLockStorage:
         Returns ``{"success": True, "new_version": N}`` on match,
         ``{"success": False, "expected": E, "actual": A}`` on mismatch.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             row = conn.execute(
                 "SELECT doc_version FROM documents WHERE document_path = ?",
                 (document_path,),
@@ -324,7 +325,7 @@ class DocumentLockStorage:
         details: Optional[Dict[str, Any]] = None,
     ) -> Optional[int]:
         """Log a conflict event.  Returns conflict ID."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             return self._record_conflict(
                 conn,
                 document_path=document_path,
@@ -381,7 +382,7 @@ class DocumentLockStorage:
         limit: int = 20,
     ) -> List[Dict[str, Any]]:
         """Retrieve conflict history with optional filters."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             conditions = []
             params: List[Any] = []
@@ -419,7 +420,7 @@ class DocumentLockStorage:
     ) -> int:
         """Prune old conflict entries.  Returns deleted count."""
         deleted = 0
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             if max_age_seconds is not None:
                 cutoff = time.time() - max_age_seconds
                 cursor = conn.execute(

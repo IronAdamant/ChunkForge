@@ -12,6 +12,7 @@ import sqlite3
 import time
 import zlib
 from pathlib import Path
+from stele.storage_schema import connect
 from typing import Any, Dict, List, Optional
 
 try:
@@ -50,7 +51,7 @@ class SessionStorage:
         agent_id is updated.
         """
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT OR IGNORE INTO sessions
@@ -68,7 +69,7 @@ class SessionStorage:
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Get session metadata."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
@@ -78,7 +79,7 @@ class SessionStorage:
 
     def list_sessions(self, agent_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List sessions, optionally filtered by agent_id."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             if agent_id is not None:
                 cursor = conn.execute(
@@ -113,7 +114,7 @@ class SessionStorage:
 
         params.append(session_id)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 f"UPDATE sessions SET {', '.join(updates)} WHERE session_id = ?", params
             )
@@ -155,7 +156,7 @@ class SessionStorage:
                 encoded = json.dumps(str(kv_data)).encode("utf-8")
         kv_path.write_bytes(zlib.compress(encoded))
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO session_chunks
@@ -175,7 +176,7 @@ class SessionStorage:
         turn_number: int,
     ) -> Optional[Any]:
         """Load KV-cache state for a chunk in a session."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 """
                 SELECT kv_path FROM session_chunks
@@ -216,7 +217,7 @@ class SessionStorage:
         turn_number: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Get all chunks associated with a session."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
 
             if turn_number is not None:
@@ -246,7 +247,7 @@ class SessionStorage:
 
     def rollback_session(self, session_id: str, target_turn: int) -> int:
         """Rollback session to a previous turn. Returns chunks removed."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT turn_count FROM sessions WHERE session_id = ?", (session_id,)
             )
@@ -282,7 +283,7 @@ class SessionStorage:
 
     def prune_chunks(self, session_id: str, max_tokens: int) -> int:
         """Prune low-relevance chunks to stay under token limit."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
 
             cursor = conn.execute(
@@ -339,7 +340,7 @@ class SessionStorage:
         if not session_kv_dir.exists():
             return
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT kv_path FROM session_chunks WHERE session_id = ?", (session_id,)
             )

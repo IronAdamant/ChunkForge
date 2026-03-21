@@ -344,83 +344,29 @@ class CodeChunker(BaseChunker):
         document_path: str,
         language: str,
     ) -> List[Chunk]:
-        """Chunk code using regex patterns (fallback)."""
-        chunks: List[Chunk] = []
-        chunk_index = 0
+        """Chunk code using regex patterns (fallback).
 
+        Delegates to _boundaries_to_chunks so chunk_size limits are respected,
+        matching the tree-sitter and Python AST paths.
+        """
         pattern = get_regex_pattern(language)
         matches = list(re.finditer(pattern, content))
 
         if not matches:
             return self._chunk_by_lines(content, document_path, language)
 
-        last_end = 0
-        for i, match in enumerate(matches):
-            match_start = match.start()
-            match_end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
-
-            if match_start > last_end:
-                pre_content = content[last_end:match_start].strip()
-                if pre_content:
-                    chunks.append(
-                        Chunk(
-                            content=pre_content,
-                            modality="code",
-                            start_pos=last_end,
-                            end_pos=match_start,
-                            document_path=document_path,
-                            chunk_index=chunk_index,
-                            metadata={"language": language},
-                        )
-                    )
-                    chunk_index += 1
-
-            def_content = content[match_start:match_end].strip()
-            if def_content:
-                chunks.append(
-                    Chunk(
-                        content=def_content,
-                        modality="code",
-                        start_pos=match_start,
-                        end_pos=match_end,
-                        document_path=document_path,
-                        chunk_index=chunk_index,
-                        metadata={"language": language},
-                    )
-                )
-                chunk_index += 1
-
-            last_end = match_end
-
-        if last_end < len(content):
-            remaining = content[last_end:].strip()
-            if remaining:
-                chunks.append(
-                    Chunk(
-                        content=remaining,
-                        modality="code",
-                        start_pos=last_end,
-                        end_pos=len(content),
-                        document_path=document_path,
-                        chunk_index=chunk_index,
-                        metadata={"language": language},
-                    )
-                )
-
-        if not chunks:
-            chunks.append(
-                Chunk(
-                    content="",
-                    modality="code",
-                    start_pos=0,
-                    end_pos=0,
-                    document_path=document_path,
-                    chunk_index=0,
-                    metadata={"language": language},
-                )
+        definitions: List[Dict[str, Any]] = []
+        for i, m in enumerate(matches):
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+            definitions.append(
+                {
+                    "type": "regex_match",
+                    "start_byte": m.start(),
+                    "end_byte": end,
+                }
             )
 
-        return chunks
+        return self._boundaries_to_chunks(content, document_path, definitions, language)
 
     def _chunk_by_lines(
         self,

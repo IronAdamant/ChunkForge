@@ -33,10 +33,10 @@ def compute_chunk_ids_hash(storage: Any) -> str:
 
     Uses incremental hashing to avoid loading all IDs into memory.
     """
-    import sqlite3
+    from stele.storage_schema import connect
 
     h = hashlib.sha256()
-    with sqlite3.connect(storage.db_path) as conn:
+    with connect(storage.db_path) as conn:
         cursor = conn.execute("SELECT chunk_id FROM chunks ORDER BY chunk_id")
         for (chunk_id,) in cursor:
             h.update(chunk_id.encode("utf-8"))

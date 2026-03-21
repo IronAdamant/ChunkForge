@@ -9,6 +9,7 @@ import json
 import sqlite3
 import time
 from pathlib import Path
+from stele.storage_schema import connect
 from typing import Any, Dict, List, Optional
 
 
@@ -33,7 +34,7 @@ class MetadataStorage:
         now = time.time()
         tags_json = json.dumps(tags) if tags else None
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO annotations
@@ -63,7 +64,7 @@ class MetadataStorage:
             query += " AND target_type = ?"
             params.append(target_type)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(query + " ORDER BY created_at DESC", params)
             rows = [dict(row) for row in cursor.fetchall()]
@@ -80,7 +81,7 @@ class MetadataStorage:
 
     def delete_annotation(self, annotation_id: int) -> bool:
         """Delete an annotation by ID. Returns True if deleted."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 "DELETE FROM annotations WHERE id = ?", (annotation_id,)
             )
@@ -106,7 +107,7 @@ class MetadataStorage:
             params.append(json.dumps(tags))
 
         params.append(annotation_id)
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 f"UPDATE annotations SET {', '.join(sets)} WHERE id = ?",
                 params,
@@ -123,7 +124,7 @@ class MetadataStorage:
         if target_type:
             sql += " AND target_type = ?"
             params.append(target_type)
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = [
                 dict(r)
@@ -145,7 +146,7 @@ class MetadataStorage:
         now = time.time()
         summary_json = json.dumps(summary, default=str)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO change_history
@@ -167,7 +168,7 @@ class MetadataStorage:
         When document_path is given, the limit is applied after filtering
         so the caller reliably gets up to `limit` matching results.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             if document_path:
                 # Fetch all, filter in Python, then limit
@@ -201,7 +202,7 @@ class MetadataStorage:
     ) -> int:
         """Prune change history by age and/or max entry count. Returns deleted count."""
         deleted = 0
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             if max_age_seconds is not None:
                 cutoff = time.time() - max_age_seconds
                 cursor = conn.execute(

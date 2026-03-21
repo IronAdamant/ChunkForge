@@ -8,6 +8,7 @@ MetadataStorage and SessionStorage.
 
 import sqlite3
 from pathlib import Path
+from stele.storage_schema import connect
 from typing import Any, Dict, List, Tuple
 
 
@@ -20,7 +21,7 @@ class SymbolStorage:
 
     def _init_tables(self) -> None:
         """Create symbol and edge tables if they don't exist."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS symbols (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +75,7 @@ class SymbolStorage:
         """Store a batch of Symbol objects."""
         if not symbols:
             return
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.executemany(
                 "INSERT INTO symbols (name, kind, role, chunk_id, document_path, line_number) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -92,7 +93,7 @@ class SymbolStorage:
         """
         if not edges:
             return
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.executemany(
                 "INSERT INTO symbol_edges "
                 "(source_chunk_id, target_chunk_id, edge_type, symbol_name) "
@@ -105,7 +106,7 @@ class SymbolStorage:
 
     def clear_document_symbols(self, document_path: str) -> None:
         """Remove all symbols for a document."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 "DELETE FROM symbols WHERE document_path = ?", (document_path,)
             )
@@ -116,7 +117,7 @@ class SymbolStorage:
         if not chunk_ids:
             return
         placeholders = ",".join("?" * len(chunk_ids))
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 f"DELETE FROM symbol_edges WHERE source_chunk_id IN ({placeholders}) "
                 f"OR target_chunk_id IN ({placeholders})",
@@ -129,7 +130,7 @@ class SymbolStorage:
         if not chunk_ids:
             return
         placeholders = ",".join("?" * len(chunk_ids))
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 f"DELETE FROM symbols WHERE chunk_id IN ({placeholders})",
                 chunk_ids,
@@ -138,13 +139,13 @@ class SymbolStorage:
 
     def clear_all_symbols(self) -> None:
         """Remove all symbols."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute("DELETE FROM symbols")
             conn.commit()
 
     def clear_all_edges(self) -> None:
         """Remove all edges."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute("DELETE FROM symbol_edges")
             conn.commit()
 
@@ -152,13 +153,13 @@ class SymbolStorage:
 
     def get_all_symbols(self) -> List[Dict[str, Any]]:
         """Get all symbols (for resolution)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             return [dict(r) for r in conn.execute("SELECT * FROM symbols").fetchall()]
 
     def find_definitions(self, name: str) -> List[Dict[str, Any]]:
         """Find all definitions for a symbol name."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             return [
                 dict(r)
@@ -170,7 +171,7 @@ class SymbolStorage:
 
     def find_references_by_name(self, name: str) -> List[Dict[str, Any]]:
         """Find all references to a symbol name."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             return [
                 dict(r)
@@ -182,7 +183,7 @@ class SymbolStorage:
 
     def get_edges_for_chunk(self, chunk_id: str) -> List[Dict[str, Any]]:
         """Get all edges involving a chunk (as source or target)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             return [
                 dict(r)
@@ -195,7 +196,7 @@ class SymbolStorage:
 
     def get_incoming_edges(self, chunk_id: str) -> List[Dict[str, Any]]:
         """Get edges where other chunks reference this chunk (dependents)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             return [
                 dict(r)
@@ -207,7 +208,7 @@ class SymbolStorage:
 
     def get_outgoing_edges(self, chunk_id: str) -> List[Dict[str, Any]]:
         """Get edges where this chunk references other chunks (dependencies)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             return [
                 dict(r)
@@ -228,7 +229,7 @@ class SymbolStorage:
         # Use OR conditions for each token
         conditions = " OR ".join(["LOWER(name) = ?"] * len(tokens))
         params = [t.lower() for t in tokens]
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 f"SELECT DISTINCT chunk_id, name, kind, document_path "
@@ -239,7 +240,7 @@ class SymbolStorage:
 
     def get_symbol_stats(self) -> Dict[str, Any]:
         """Get symbol and edge counts."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             sym_count = conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
             edge_count = conn.execute("SELECT COUNT(*) FROM symbol_edges").fetchone()[0]
             def_count = conn.execute(

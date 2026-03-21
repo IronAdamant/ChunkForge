@@ -353,7 +353,7 @@ class TestMCPAgentId:
 
         # Call a write tool without agent_id
         result = execute_tool(
-            "index_documents",
+            "index",
             {"paths": [str(f)], "force_reindex": True},
             tool_map,
             "test-agent",

@@ -9,6 +9,17 @@ import sqlite3
 from pathlib import Path
 
 
+def connect(db_path: Path) -> sqlite3.Connection:
+    """Create a SQLite connection with performance PRAGMAs applied.
+
+    Sets synchronous=NORMAL (connection-scoped, must be set per connection).
+    WAL journal mode persists at database level so is set only in init_database.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
+
 def init_database(db_path: Path) -> None:
     """Create SQLite database with required tables and indexes."""
     with sqlite3.connect(db_path) as conn:
@@ -122,7 +133,7 @@ def init_database(db_path: Path) -> None:
 
 def migrate_database(db_path: Path) -> None:
     """Run database migrations for schema changes."""
-    with sqlite3.connect(db_path) as conn:
+    with connect(db_path) as conn:
         changed = False
 
         # Chunks table migrations

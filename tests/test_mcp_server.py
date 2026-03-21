@@ -58,17 +58,17 @@ class TestHTTPServer:
             assert status == 200
             tool_names = {t["name"] for t in data["tools"]}
             # Must contain all 15 tools
-            assert "index_documents" in tool_names
+            assert "index" in tool_names
             assert "search" in tool_names
             assert "find_references" in tool_names
             assert "find_definition" in tool_names
             assert "impact_radius" in tool_names
-            assert "rebuild_symbol_graph" in tool_names
+            assert "rebuild_symbols" in tool_names
             assert "stale_chunks" in tool_names
             assert "detect_modality" in tool_names
             assert "get_supported_formats" in tool_names
             assert "list_sessions" in tool_names
-            assert len(tool_names) == 30
+            assert len(tool_names) == 41
         finally:
             server.stop()
 
@@ -125,7 +125,7 @@ class TestHTTPServer:
             status, data = self._post(
                 f"{url}/call",
                 {
-                    "tool": "index_documents",
+                    "tool": "index",
                     "parameters": {"paths": [str(test_file)]},
                 },
             )
@@ -182,7 +182,7 @@ class TestHTTPServer:
             status, data = self._post(
                 f"{url}/call",
                 {
-                    "tool": "detect_changes_and_update",
+                    "tool": "detect_changes",
                     "parameters": {"session_id": "test-session"},
                 },
             )
@@ -280,7 +280,7 @@ class TestHTTPServer:
             status, data = self._post(
                 f"{url}/call",
                 {
-                    "tool": "rebuild_symbol_graph",
+                    "tool": "rebuild_symbols",
                     "parameters": {},
                 },
             )

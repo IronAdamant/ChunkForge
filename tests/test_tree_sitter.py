@@ -229,9 +229,15 @@ class Foo {
     bar() { return 1; }
 }
 """
-        # Force regex path
+        # Force regex path -- now uses _boundaries_to_chunks so small code
+        # may merge into fewer chunks based on chunk_size
         chunks = chunker._chunk_regex(code, "test.js", "js")
-        assert len(chunks) >= 2
+        assert len(chunks) >= 1
+        assert all(c.metadata["language"] == "js" for c in chunks)
+        # With very small chunk_size, multiple definitions should split
+        chunker_small = CodeChunker(chunk_size=10)
+        chunks_small = chunker_small._chunk_regex(code, "test.js", "js")
+        assert len(chunks_small) >= 2
 
     def test_python_always_uses_ast(self):
         """Python should always use stdlib ast, never tree-sitter."""

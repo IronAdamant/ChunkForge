@@ -345,9 +345,9 @@ def cmd_serve(args: argparse.Namespace, stele: Stele) -> int:
 
 def cmd_serve_mcp(args: argparse.Namespace, _stele: None = None) -> int:
     """Start the stdio MCP server."""
-    from stele.mcp_stdio import main as mcp_main
+    from stele.mcp_stdio import run as mcp_run
 
-    mcp_main(storage_dir=args.storage_dir)
+    mcp_run(storage_dir=args.storage_dir)
     return 0
 
 

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from stele.document_lock_storage import DocumentLockStorage
+from stele.storage_schema import connect
 from stele.metadata_storage import MetadataStorage
 from stele.session_storage import SessionStorage
 from stele.storage_delegates import StorageDelegatesMixin
@@ -92,7 +93,7 @@ class StorageBackend(StorageDelegatesMixin):
 
         sig_bytes = sig_to_bytes(semantic_signature)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             # Get current version
             cursor = conn.execute(
                 "SELECT version FROM chunks WHERE chunk_id = ?", (chunk_id,)
@@ -163,7 +164,7 @@ class StorageBackend(StorageDelegatesMixin):
     def get_chunk(self, chunk_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve chunk metadata by ID."""
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             conn.execute(
                 """
@@ -183,7 +184,7 @@ class StorageBackend(StorageDelegatesMixin):
 
     def get_chunk_content(self, chunk_id: str) -> Optional[str]:
         """Retrieve chunk text content by ID."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT content FROM chunks WHERE chunk_id = ?", (chunk_id,)
             )
@@ -197,7 +198,7 @@ class StorageBackend(StorageDelegatesMixin):
         document_path: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search chunks, returning metadata and content."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
 
             if document_path:
@@ -231,7 +232,7 @@ class StorageBackend(StorageDelegatesMixin):
         that would be lost with INSERT OR REPLACE.
         """
         now = time.time()
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 """
                 INSERT INTO documents
@@ -249,7 +250,7 @@ class StorageBackend(StorageDelegatesMixin):
 
     def get_document(self, document_path: str) -> Optional[Dict[str, Any]]:
         """Get document indexing information."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM documents WHERE document_path = ?", (document_path,)
@@ -259,7 +260,7 @@ class StorageBackend(StorageDelegatesMixin):
 
     def get_all_documents(self) -> List[Dict[str, Any]]:
         """Get all indexed documents."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM documents ORDER BY document_path")
             return [dict(row) for row in cursor.fetchall()]
@@ -274,7 +275,7 @@ class StorageBackend(StorageDelegatesMixin):
     ) -> bool:
         """Store an agent-supplied semantic summary and its computed signature."""
         sig_bytes = sig_to_bytes(agent_signature)
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 "UPDATE chunks SET semantic_summary = ?, agent_signature = ? "
                 "WHERE chunk_id = ?",
@@ -290,7 +291,7 @@ class StorageBackend(StorageDelegatesMixin):
     ) -> bool:
         """Store a raw agent-supplied embedding vector."""
         sig_bytes = sig_to_bytes(agent_signature)
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 "UPDATE chunks SET agent_signature = ? WHERE chunk_id = ?",
                 (sig_bytes, chunk_id),
@@ -300,7 +301,7 @@ class StorageBackend(StorageDelegatesMixin):
 
     def get_agent_signature(self, chunk_id: str) -> Optional[Any]:
         """Get agent-supplied signature for a chunk, if any."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT agent_signature FROM chunks WHERE chunk_id = ?",
                 (chunk_id,),
@@ -319,7 +320,7 @@ class StorageBackend(StorageDelegatesMixin):
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """Query chunk version history."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
 
             conditions: List[str] = []
@@ -350,7 +351,7 @@ class StorageBackend(StorageDelegatesMixin):
 
     def set_staleness(self, chunk_id: str, score: float) -> None:
         """Set staleness score for a chunk."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 "UPDATE chunks SET staleness_score = ? WHERE chunk_id = ?",
                 (score, chunk_id),
@@ -361,7 +362,7 @@ class StorageBackend(StorageDelegatesMixin):
         """Set staleness for multiple chunks. Each: (score, chunk_id)."""
         if not updates:
             return
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.executemany(
                 "UPDATE chunks SET staleness_score = ? WHERE chunk_id = ?",
                 updates,
@@ -370,13 +371,13 @@ class StorageBackend(StorageDelegatesMixin):
 
     def clear_staleness(self) -> None:
         """Reset all staleness scores to 0."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute("UPDATE chunks SET staleness_score = 0.0")
             conn.commit()
 
     def get_stale_chunks(self, threshold: float = 0.3) -> List[Dict[str, Any]]:
         """Get chunks with staleness_score >= threshold."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT chunk_id, document_path, staleness_score, token_count, content "
@@ -390,7 +391,7 @@ class StorageBackend(StorageDelegatesMixin):
 
     def get_storage_stats(self) -> Dict[str, Any]:
         """Get storage statistics."""
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             cursor = conn.execute("SELECT COUNT(*) FROM chunks")
             chunk_count = cursor.fetchone()[0]
 
@@ -443,7 +444,7 @@ class StorageBackend(StorageDelegatesMixin):
         self._symbol_storage.clear_chunk_edges(chunk_ids)
 
         placeholders = ",".join("?" * len(chunk_ids))
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 f"DELETE FROM session_chunks WHERE chunk_id IN ({placeholders})",
                 chunk_ids,
@@ -479,7 +480,7 @@ class StorageBackend(StorageDelegatesMixin):
         if chunk_ids:
             self._symbol_storage.clear_chunk_edges(chunk_ids)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             # Delete document-level annotations
             cursor = conn.execute(
                 "DELETE FROM annotations WHERE target = ? AND target_type = 'document'",
@@ -491,7 +492,7 @@ class StorageBackend(StorageDelegatesMixin):
         # Delegate chunk deletion (handles session_chunks, history, chunk annotations)
         chunks_removed = self.delete_chunks(chunk_ids)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute(
                 "DELETE FROM documents WHERE document_path = ?", (document_path,)
             )
@@ -509,7 +510,7 @@ class StorageBackend(StorageDelegatesMixin):
         self._symbol_storage.clear_all_symbols()
         self._symbol_storage.clear_all_edges()
 
-        with sqlite3.connect(self.db_path) as conn:
+        with connect(self.db_path) as conn:
             conn.execute("DELETE FROM session_chunks")
             conn.execute("DELETE FROM sessions")
             conn.execute("DELETE FROM chunk_history")

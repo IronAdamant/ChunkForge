@@ -300,7 +300,7 @@ def index_documents_unlocked(
                 )
                 if not ver_result.get("success"):
                     if agent_id:
-                        storage.record_conflict(
+                        do_record_conflict(
                             document_path=norm_path,
                             agent_a="unknown",
                             agent_b=agent_id,

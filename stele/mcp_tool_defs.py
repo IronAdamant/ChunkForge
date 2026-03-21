@@ -298,6 +298,108 @@ _TOOL_DEFINITIONS_CORE: List[Dict[str, Any]] = [
             "properties": {},
         },
     },
+    {
+        "name": "detect_modality",
+        "description": "Detect the modality of a file based on its extension",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "File path to detect modality for",
+                },
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "get_supported_formats",
+        "description": "List supported file formats by modality",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "get_relevant_kv",
+        "description": "Retrieve relevant cached KV state for a session",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Query to match against cached chunks",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of results to return",
+                    "default": 5,
+                },
+            },
+            "required": ["session_id", "query"],
+        },
+    },
+    {
+        "name": "save_kv_state",
+        "description": "Save KV-cache state for a session chunk",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID",
+                },
+                "chunk_id": {
+                    "type": "string",
+                    "description": "Chunk ID",
+                },
+                "kv_data": {
+                    "description": "KV-cache data to save",
+                },
+            },
+            "required": ["session_id", "chunk_id", "kv_data"],
+        },
+    },
+    {
+        "name": "rollback",
+        "description": "Rollback a session to a previous turn",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID",
+                },
+                "target_turn": {
+                    "type": "integer",
+                    "description": "Turn number to rollback to",
+                },
+            },
+            "required": ["session_id", "target_turn"],
+        },
+    },
+    {
+        "name": "prune_chunks",
+        "description": "Prune least-relevant chunks from a session",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID",
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Maximum total tokens to keep",
+                },
+            },
+            "required": ["session_id", "max_tokens"],
+        },
+    },
 ]
 
 # Combined list: core + extended (symbols, locking, agents, env, embeddings)
