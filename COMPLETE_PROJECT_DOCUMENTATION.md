@@ -80,4 +80,9 @@
 | `tests/test_chunk_history.py` | Chunk version history | ~10 |
 | `tests/test_env_checks.py` | Pycache scanning, editable installs | ~32 |
 
-**Total: 579 tests (1 skipped without MCP SDK)**
+| `tests/test_stemmer.py` | Porter stemmer: stem(), split_identifier() | ~25 |
+| `tests/test_cli.py` | CLI commands, argument parsing, JSON output | ~30 |
+| `tests/test_search_engine.py` | Search alpha tuning, identifier extraction, signatures | ~30 |
+| `tests/test_connection_pool.py` | Thread-local pool, connect() context manager, search_text edges | ~40 |
+
+**Total: 708 tests (1 skipped without MCP SDK)**

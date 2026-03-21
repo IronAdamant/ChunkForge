@@ -2,6 +2,28 @@
 
 Chronological record of development activity on Stele Context, maintained for LLM agent context.
 
+## 2026-03-22 - v0.10.5 CI Fix + Test Coverage Expansion
+
+### CI fixes
+- Fixed Python 3.9 import failure: `str | None` in module-level type alias `GetWorktreeFn` in `change_notifications.py` — replaced with `Optional[str]` (PEP 604 union syntax not available at runtime on Python <3.10)
+- Fixed missing `main = run` alias in `mcp_stdio.py` — was never committed, causing `AttributeError` in CI tests and broken `stele-context-mcp` entry point
+- Added `fail-fast: false` to CI matrix so all Python versions run even if one fails
+- Added Python 3.13 to CI test matrix (was in pyproject.toml classifiers but not tested)
+
+### New test files (129 new tests, total 708)
+- `test_stemmer.py`: Porter stemmer `stem()` and `split_identifier()` with known test vectors
+- `test_cli.py`: CLI argument parsing, all subcommands, JSON output mode, error cases
+- `test_search_engine.py`: `compute_search_alpha()`, `extract_query_identifiers()`, `_text_signature()`, `init_chunkers()`
+- `test_connection_pool.py`: Thread-local connection reuse, cross-thread isolation, `connect()` context manager commit/rollback, `search_text()` edge cases (invalid regex, empty pattern)
+
+### Test fixes
+- Fixed `tempfile.mkdtemp()` leaks in `test_symbols.py` — added `teardown_method` with `shutil.rmtree` to all 6 test classes
+- Fixed CONTRIBUTING.md: replaced Black/isort references with ruff (matches actual CI tooling)
+
+### Documentation
+- Updated CHANGELOG.md to cover versions 0.10.3 through 0.10.5 (was stale at 0.9.0)
+- Updated COMPLETE_PROJECT_DOCUMENTATION.md with new test file entries
+
 ## 2026-03-22 - v0.10.4 Comprehensive Codebase Cleanup
 
 ### Dead code removed

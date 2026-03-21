@@ -209,5 +209,9 @@ def run(storage_dir: str | None = None) -> None:
     asyncio.run(_run_server(bundle))
 
 
+main = run
+
+main = run
+
 if __name__ == "__main__":
     run()

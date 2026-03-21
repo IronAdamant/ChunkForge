@@ -193,15 +193,12 @@ def index_documents(
 ### Code Formatting
 
 We use:
-- **Black** for code formatting
-- **isort** for import sorting
+- **ruff** for code formatting and linting
 - **mypy** for type checking
-- **ruff** for linting
 
 ```bash
 # Format code
-black stele_context/ tests/
-isort stele_context/ tests/
+ruff format stele_context/ tests/
 
 # Check types
 mypy stele_context/

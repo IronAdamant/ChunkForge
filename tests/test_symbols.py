@@ -1,6 +1,7 @@
 """Tests for symbol extraction, resolution, and graph queries."""
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -276,6 +277,9 @@ class TestSymbolStorage:
         self.db_path = Path(self.tmpdir) / "test.db"
         self.storage = SymbolStorage(self.db_path)
 
+    def teardown_method(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
     def test_store_and_find_definitions(self):
         syms = [Symbol("foo", "function", "definition", "c1", "a.py", 1)]
         self.storage.store_symbols(syms)
@@ -346,6 +350,9 @@ class TestEngineSymbolIntegration:
     def setup_method(self):
         self.tmpdir = tempfile.mkdtemp()
         self.cf = Stele(storage_dir=self.tmpdir)
+
+    def teardown_method(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _write_and_index(self, filename: str, content: str) -> None:
         """Write a temp file and index it."""
@@ -422,6 +429,9 @@ class TestDirectoryIndexing:
         self.src = Path(self.tmpdir) / "src"
         self.src.mkdir()
 
+    def teardown_method(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
     def test_index_directory(self):
         """Indexing a directory should recursively find supported files."""
         (self.src / "a.py").write_text("def foo():\n    pass\n")
@@ -480,6 +490,9 @@ class TestStalenessPropagation:
         self.cf = Stele(storage_dir=os.path.join(self.tmpdir, "store"))
         self.src = Path(self.tmpdir) / "src"
         self.src.mkdir()
+
+    def teardown_method(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_no_staleness_before_changes(self):
         (self.src / "a.py").write_text("def foo():\n    pass\n")
@@ -572,6 +585,9 @@ class TestSearchWithEdges:
         self.src = Path(self.tmpdir) / "src"
         self.src.mkdir()
 
+    def teardown_method(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
     def test_search_includes_edges(self):
         (self.src / "base.py").write_text("class Base:\n    pass\n")
         (self.src / "child.py").write_text(
@@ -611,6 +627,9 @@ class TestConfigurableSkipDirs:
         self.tmpdir = tempfile.mkdtemp()
         self.src = Path(self.tmpdir) / "src"
         self.src.mkdir()
+
+    def teardown_method(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_custom_skip_dir(self):
         cf = Stele(

@@ -5,6 +5,57 @@ All notable changes to Stele Context will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.5] - 2026-03-22
+
+### Fixed
+- **CI failure on Python 3.9**: `str | None` type union in `change_notifications.py` module-level alias failed at import time on Python <3.10 — replaced with `Optional[str]`
+- **Missing `main` alias in `mcp_stdio.py`**: `main = run` was never committed, causing `AttributeError` in tests and breaking the `stele-context-mcp` entry point
+- **Stale test comment**: "Must contain all 15 tools" updated to 42 in `test_mcp_server.py`
+- **`tempfile.mkdtemp()` leaks in `test_symbols.py`**: 6 test classes created temp directories without cleanup — added `teardown_method` with `shutil.rmtree`
+
+### Added
+- **New test files**: `test_stemmer.py` (Porter stemmer), `test_cli.py` (CLI commands), `test_search_engine.py` (search ranking), `test_connection_pool.py` (connection pool + search_text edge cases)
+- **Python 3.13 in CI matrix**: Added 3.13 to test workflow (matches pyproject.toml classifiers)
+- **`fail-fast: false`** in CI: All Python versions now run to completion even if one fails
+
+### Changed
+- **CONTRIBUTING.md**: Fixed Black/isort references to ruff (matches actual CI tooling)
+- **CI actions**: Updated test matrix to include Python 3.13
+
+## [0.10.3] - 2026-03-21
+
+### Fixed
+- Position tracking bug in `CodeChunker._boundaries_to_chunks()`
+- Unbounded SQL query in `metadata_storage.get_change_history()` with document_path filter
+- agent_id injection inconsistency between stdio and HTTP servers
+- Added lock tools to `WRITE_TOOLS` for proper auto agent_id injection
+- Synced pyproject.toml version with __init__.py
+
+### Removed
+- 35 redundant `conn.commit()` calls across storage modules
+- Unnecessary `isinstance(d, dict)` check in change_detection.py
+- Production `assert` in image.py
+
+### Added
+- `Chunk` to `stele_context/__init__.py` exports
+
+## [0.10.4] - 2026-03-22
+
+### Removed
+- Dead functions `_replace_suffix()` and `stem_tokens()` from stemmer.py
+- 15+ redundant `conn.commit()` calls in coordination modules
+- Redundant `is not None` checks, unreachable guards, stale tracking variables
+- Duplicate `clear_chunk_edges()` call in `storage.remove_document()`
+
+### Changed
+- Inlined `mcp_handlers.py` logic into `mcp_server.py` (handlers reduced to re-export shim)
+- Simplified `coordination._record_conflict()` from 35 lines to 12
+- Moved `logging.basicConfig()` from module-level to `MCPServer.start()`
+- Updated branding to "Stele Context" in `__init__.py`
+
+### Fixed
+- Missing `"type": "object"` on `kv_data` schema in `mcp_tool_defs.py`
+
 ## [0.9.0] - 2026-03-21
 
 ### Added

@@ -150,7 +150,7 @@ Coordination DB (`<git-common-dir>/stele-context/coordination.db`):
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 579 tests (579 pass, 1 skipped without mcp SDK)
+pytest                    # 708 tests (708 pass, 1 skipped without mcp SDK)
 mypy stele_context/
 ruff check stele_context/
 ```
