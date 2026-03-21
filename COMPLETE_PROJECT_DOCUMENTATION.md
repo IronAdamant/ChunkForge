@@ -13,7 +13,8 @@
 | `stele/change_detection.py` | Detect file changes, re-index modified chunks | chunkers.base, chunkers.numpy_compat | test_engine.py |
 | `stele/config.py` | `.stele.toml` loader with minimal TOML parser | None | test_config.py |
 | `stele/storage.py` | `StorageBackend` - SQLite + filesystem persistence | storage_schema, storage_delegates, all sub-storages | test_engine.py, test_storage_migration.py |
-| `stele/storage_schema.py` | Database init and migration SQL | None | test_storage_migration.py |
+| `stele/storage_schema.py` | Database init and migration SQL | connection_pool | test_storage_migration.py |
+| `stele/connection_pool.py` | Thread-local SQLite connection reuse | None | (via test_engine.py) |
 | `stele/storage_delegates.py` | `StorageDelegatesMixin` - forwarding methods | None (mixin) | (via test_engine.py) |
 | `stele/session_storage.py` | Session table operations, KV-cache | None | test_session.py |
 | `stele/metadata_storage.py` | Annotations and change history tables | None | test_metadata.py |
@@ -27,7 +28,8 @@
 | `stele/symbols.py` | `SymbolExtractor` - dispatcher + Python AST | symbol_patterns | test_symbols.py |
 | `stele/symbol_patterns.py` | `Symbol` dataclass + 10 language regex extractors | None | test_symbols.py |
 | `stele/symbol_graph.py` | `SymbolGraphManager` - edges, staleness, queries | symbols, storage | test_symbols.py |
-| `stele/coordination.py` | `CoordinationBackend` - cross-worktree shared DB | agent_registry | test_worktree_safety.py |
+| `stele/coordination.py` | `CoordinationBackend` - cross-worktree shared DB | agent_registry, change_notifications, document_lock_storage | test_worktree_safety.py |
+| `stele/change_notifications.py` | Change notification storage for coordination DB | None | test_worktree_safety.py |
 | `stele/agent_registry.py` | Agent registration, heartbeat, reaping | None | test_worktree_safety.py |
 | `stele/env_checks.py` | Stale bytecache + editable install detection | None | test_env_checks.py |
 | `stele/chunkers/__init__.py` | Chunker registry, auto-detection | all chunkers | test_chunkers.py |
@@ -42,10 +44,10 @@
 | `stele/chunkers/video.py` | `VideoChunker` - OpenCV-based (optional) | chunkers.base | (requires opencv) |
 | `stele/cli.py` | CLI entry point (`stele` command) | engine | (manual testing) |
 | `stele/cli_metadata.py` | CLI metadata/annotation subcommands | engine | (manual testing) |
-| `stele/mcp_server.py` | HTTP REST server (30 tools, threaded) | mcp_handlers, mcp_schemas | test_mcp_server.py |
-| `stele/mcp_handlers.py` | HTTP tool dispatch and agent_id injection | mcp_schemas | test_mcp_server.py |
-| `stele/mcp_schemas.py` | HTTP tool schema definitions (pure data) | None | (via test_mcp_server.py) |
-| `stele/mcp_stdio.py` | MCP stdio server (JSON-RPC for Claude Desktop) | mcp_tool_defs | test_mcp_stdio.py |
+| `stele/mcp_server.py` | HTTP REST server (42 tools, threaded) | mcp_handlers, tool_registry | test_mcp_server.py |
+| `stele/mcp_handlers.py` | HTTP tool dispatch and agent_id injection | tool_registry | test_mcp_server.py |
+| `stele/tool_registry.py` | Unified tool dispatch, WRITE_TOOLS, HTTP schemas | mcp_tool_defs | (via test_mcp_server.py, test_mcp_stdio.py) |
+| `stele/mcp_stdio.py` | MCP stdio server (JSON-RPC for Claude Desktop) | mcp_tool_defs, tool_registry | test_mcp_stdio.py |
 | `stele/mcp_tool_defs.py` | MCP stdio tool definitions (core, 15 tools) | mcp_tool_defs_ext | (via test_mcp_stdio.py) |
 | `stele/mcp_tool_defs_ext.py` | MCP stdio tool definitions (extended, 20 tools) | None | (via test_mcp_stdio.py) |
 
@@ -77,4 +79,4 @@
 | `tests/test_chunk_history.py` | Chunk version history | ~10 |
 | `tests/test_env_checks.py` | Pycache scanning, editable installs | ~32 |
 
-**Total: 569 tests (1 skipped without MCP SDK)**
+**Total: 574 tests (1 skipped without MCP SDK)**

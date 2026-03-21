@@ -75,12 +75,25 @@ def create_server(storage_dir: str | None = None) -> _ServerBundle:
     if not HAS_MCP:
         raise ImportError("MCP SDK not installed. Install with: pip install stele[mcp]")
 
+    from stele.chunkers import (
+        HAS_IMAGE_CHUNKER,
+        HAS_PDF_CHUNKER,
+        HAS_AUDIO_CHUNKER,
+        HAS_VIDEO_CHUNKER,
+    )
+
     engine = _create_engine(storage_dir)
     server = Server("stele")
     server_agent_id = f"stele-mcp-{os.getpid()}"
 
     # Build tool dispatch map once (not per request)
-    tool_map = build_tool_map(engine)
+    modality_flags = {
+        "image": HAS_IMAGE_CHUNKER,
+        "pdf": HAS_PDF_CHUNKER,
+        "audio": HAS_AUDIO_CHUNKER,
+        "video": HAS_VIDEO_CHUNKER,
+    }
+    tool_map = build_tool_map(engine, modality_flags)
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:

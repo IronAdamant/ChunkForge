@@ -67,23 +67,21 @@ def _save_compressed_json(data: dict[str, Any], filename: str, index_dir: Path) 
     target = index_dir / filename
 
     lock_file = _lock_path(index_dir, filename)
-    lock_fd = open(lock_file, "w")
-    try:
+    with open(lock_file, "w") as lock_fd:
         if _HAS_FCNTL:
             fcntl.flock(lock_fd, fcntl.LOCK_EX)
-
-        fd, tmp_path = tempfile.mkstemp(dir=str(index_dir), suffix=".tmp")
         try:
-            with open(fd, "wb") as f:
-                f.write(compressed)
-            Path(tmp_path).replace(target)
-        except Exception:
-            Path(tmp_path).unlink(missing_ok=True)
-            raise
-    finally:
-        if _HAS_FCNTL:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        lock_fd.close()
+            fd, tmp_path = tempfile.mkstemp(dir=str(index_dir), suffix=".tmp")
+            try:
+                with open(fd, "wb") as f:
+                    f.write(compressed)
+                Path(tmp_path).replace(target)
+            except Exception:
+                Path(tmp_path).unlink(missing_ok=True)
+                raise
+        finally:
+            if _HAS_FCNTL:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
 
 def _load_compressed_json(filename: str, index_dir: Path) -> dict[str, Any] | None:
@@ -113,9 +111,11 @@ def _load_compressed_json(filename: str, index_dir: Path) -> dict[str, Any] | No
         return None
     finally:
         if lock_fd is not None:
-            if _HAS_FCNTL:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            lock_fd.close()
+            try:
+                if _HAS_FCNTL:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            finally:
+                lock_fd.close()
 
 
 # -- HNSW persistence --------------------------------------------------------
@@ -129,17 +129,12 @@ def save_index(index: VectorIndex, chunk_ids_hash: str, index_dir: Path) -> None
     _save_compressed_json(data, INDEX_FILENAME, index_dir)
 
 
-def load_index(index_dir: Path) -> dict[str, Any] | None:
-    """Load a persisted index file, returning the raw dict or None."""
-    return _load_compressed_json(INDEX_FILENAME, index_dir)
-
-
 def load_if_fresh(
     index_dir: Path,
     current_hash: str,
 ) -> VectorIndex | None:
     """Load persisted index only if it matches the current chunk state."""
-    data = load_index(index_dir)
+    data = _load_compressed_json(INDEX_FILENAME, index_dir)
     if data is None:
         return None
     if data.get("_chunk_ids_hash") != current_hash:

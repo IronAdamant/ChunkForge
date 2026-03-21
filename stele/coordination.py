@@ -15,6 +15,7 @@ from typing import Any
 
 from stele import agent_registry
 from stele import change_notifications as _cn
+from stele.document_lock_storage import _hydrate_conflicts
 
 
 def detect_git_common_dir(project_root: Path | None) -> Path | None:
@@ -453,17 +454,7 @@ class CoordinationBackend:
             )
             params.append(limit)
             rows = conn.execute(query, params).fetchall()
-
-            results = []
-            for row in rows:
-                d = dict(row)
-                if d.get("details_json"):
-                    d["details"] = json.loads(d["details_json"])
-                    del d["details_json"]
-                else:
-                    d.pop("details_json", None)
-                results.append(d)
-            return results
+            return _hydrate_conflicts(rows)
 
     # -- Change notifications (delegated to stele.change_notifications) -------
 

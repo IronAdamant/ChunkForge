@@ -2,6 +2,32 @@
 
 Chronological record of development activity on Stele, maintained for LLM agent context.
 
+## 2026-03-21 - v0.10.1 Codebase Cleanup
+
+### Bug fixes
+- Fixed MCP stdio server not registering `detect_modality`/`get_supported_formats` tools (modality_flags not passed to `build_tool_map`)
+- Fixed `get_chunk()` in storage.py: SELECT now before UPDATE (was incrementing access_count on nonexistent chunks)
+- Fixed lock file resource leak in `index_store.py`: write path now uses `with` statement, read path uses nested try/finally for guaranteed cleanup
+
+### Dead code removed
+- Removed `load_index()` wrapper from `index_store.py` (was only used by `load_if_fresh()`, inlined to direct `_load_compressed_json` call)
+- Updated test_index_store.py to use `_load_compressed_json` directly
+
+### Code quality improvements
+- Extracted `_hydrate_conflicts()` shared helper in `document_lock_storage.py`, used by both `DocumentLockStorage` and `CoordinationBackend` (eliminated duplicate JSON hydration)
+- Fixed tuple indexing inconsistency in `DocumentLockStorage`: `refresh_lock()` and `release_lock()` now use `sqlite3.Row` named access instead of `row[0]`/`row[1]`
+- Simplified `get_lock_stats()` by inlining single-use row variables
+- Extracted `_print_detect_section()` helper in `cli.py` to deduplicate 4 near-identical printing blocks in `cmd_detect()`
+- Added error handling to `cmd_clear()` for filesystem operations
+- Defined `DEFAULT_MCP_PORT` and `HEARTBEAT_INTERVAL` constants in `mcp_server.py`, reused by `cli.py`
+- Added `idx_chunks_staleness` index on `chunks(staleness_score)` during migration for fast stale-chunk queries
+
+### Documentation
+- Updated README test badge: 412 → 573
+- Updated CLAUDE.md with new design decisions
+- Updated COMPLETE_PROJECT_DOCUMENTATION.md file table
+- Total: 573 pass, 1 skipped (MCP SDK)
+
 ## 2026-03-21 - v0.9.0 Release & CI Fixes
 
 ### Features added

@@ -4,9 +4,9 @@ from stele.engine import Stele
 from stele.index import HNSWIndex, VectorIndex
 from stele.index_store import (
     INDEX_FILENAME,
+    _load_compressed_json,
     compute_chunk_ids_hash,
     load_if_fresh,
-    load_index,
     save_index,
 )
 
@@ -92,18 +92,18 @@ class TestIndexStore:
         save_index(vi, "test_hash", tmp_path)
         assert (tmp_path / INDEX_FILENAME).exists()
 
-        data = load_index(tmp_path)
+        data = _load_compressed_json(INDEX_FILENAME, tmp_path)
         assert data is not None
         assert data["_chunk_ids_hash"] == "test_hash"
 
     def test_load_nonexistent(self, tmp_path):
         """Test loading from empty directory returns None."""
-        assert load_index(tmp_path) is None
+        assert _load_compressed_json(INDEX_FILENAME, tmp_path) is None
 
     def test_load_corrupt_file(self, tmp_path):
         """Test loading corrupt file returns None."""
         (tmp_path / INDEX_FILENAME).write_bytes(b"not valid data")
-        assert load_index(tmp_path) is None
+        assert _load_compressed_json(INDEX_FILENAME, tmp_path) is None
 
     def test_load_if_fresh_matching(self, tmp_path):
         """Test load_if_fresh returns index when hash matches."""

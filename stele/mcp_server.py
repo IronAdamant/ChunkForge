@@ -43,6 +43,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+DEFAULT_MCP_PORT = 9876
+HEARTBEAT_INTERVAL = 30
+
 
 class MCPRequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler for MCP server."""
@@ -184,7 +187,7 @@ class MCPServer:
         self,
         stele: Stele,
         host: str = "localhost",
-        port: int = 9876,
+        port: int = DEFAULT_MCP_PORT,
         agent_id: str | None = None,
     ):
         self.stele = stele
@@ -238,7 +241,7 @@ class MCPServer:
         """Background heartbeat for agent registration."""
         while self.server is not None:
             self.stele.heartbeat(self.agent_id)
-            time.sleep(30)
+            time.sleep(HEARTBEAT_INTERVAL)
 
     def stop(self) -> None:
         """Stop the MCP server."""

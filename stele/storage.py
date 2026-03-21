@@ -174,21 +174,18 @@ class StorageBackend(StorageDelegatesMixin):
         now = time.time()
         with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM chunks WHERE chunk_id = ?", (chunk_id,)
+            ).fetchone()
+            if row is None:
+                return None
             conn.execute(
-                """
-                UPDATE chunks
-                SET last_accessed = ?, access_count = access_count + 1
-                WHERE chunk_id = ?
-            """,
+                "UPDATE chunks SET last_accessed = ?, access_count = access_count + 1 "
+                "WHERE chunk_id = ?",
                 (now, chunk_id),
             )
-            cursor = conn.execute(
-                "SELECT * FROM chunks WHERE chunk_id = ?", (chunk_id,)
-            )
-            row = cursor.fetchone()
             conn.commit()
-
-            return dict(row) if row else None
+            return dict(row)
 
     def get_chunk_content(self, chunk_id: str) -> str | None:
         """Retrieve chunk text content by ID."""

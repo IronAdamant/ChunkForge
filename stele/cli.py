@@ -18,7 +18,7 @@ import time
 
 from stele import __version__ as stele_version
 from stele.engine import Stele
-from stele.mcp_server import MCPServer
+from stele.mcp_server import DEFAULT_MCP_PORT, MCPServer
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -78,8 +78,8 @@ Examples:
     serve_parser.add_argument(
         "--port",
         type=int,
-        default=9876,
-        help="Port to bind to (default: 9876)",
+        default=DEFAULT_MCP_PORT,
+        help=f"Port to bind to (default: {DEFAULT_MCP_PORT})",
     )
     serve_parser.add_argument(
         "--blocking",
@@ -431,6 +431,20 @@ def cmd_search(args: argparse.Namespace, stele: Stele) -> int:
     return 0
 
 
+def _print_detect_section(
+    label: str, items: list, default_reason: str | None = None
+) -> None:
+    """Print a labeled section of detect-changes output."""
+    if not items:
+        return
+    print(f"\n{label} ({len(items)}):")
+    for item in items:
+        if isinstance(item, dict):
+            print(f"  {item['path']}: {item.get('reason', default_reason or '')}")
+        else:
+            print(f"  {item}")
+
+
 def cmd_detect(args: argparse.Namespace, stele: Stele) -> int:
     """Detect changes in indexed documents."""
     print(f"Detecting changes for session '{args.session}'...")
@@ -440,31 +454,10 @@ def cmd_detect(args: argparse.Namespace, stele: Stele) -> int:
         document_paths=args.paths if args.paths else None,
     )
 
-    if result["unchanged"]:
-        print(f"\nUnchanged ({len(result['unchanged'])}):")
-        for path in result["unchanged"]:
-            print(f"  {path}")
-
-    if result["modified"]:
-        print(f"\nModified ({len(result['modified'])}):")
-        for item in result["modified"]:
-            if isinstance(item, dict):
-                print(f"  {item['path']}: {item.get('reason', 'content changed')}")
-            else:
-                print(f"  {item}")
-
-    if result["new"]:
-        print(f"\nNew ({len(result['new'])}):")
-        for item in result["new"]:
-            if isinstance(item, dict):
-                print(f"  {item['path']}: {item.get('reason', 'new document')}")
-            else:
-                print(f"  {item}")
-
-    if result["removed"]:
-        print(f"\nRemoved ({len(result['removed'])}):")
-        for path in result["removed"]:
-            print(f"  {path}")
+    _print_detect_section("Unchanged", result["unchanged"])
+    _print_detect_section("Modified", result["modified"], "content changed")
+    _print_detect_section("New", result["new"], "new document")
+    _print_detect_section("Removed", result["removed"])
 
     print(
         f"\nCache: {result['kv_restored']} restored, {result['kv_reprocessed']} reprocessed"
@@ -518,12 +511,16 @@ def cmd_clear(args: argparse.Namespace, stele: Stele) -> int:
             return 0
 
     print("Clearing all data...")
-    stele.storage.clear_all()
-    # Clear persisted HNSW index files
-    for idx_file in stele.storage.index_dir.glob("*"):
-        idx_file.unlink()
-    # Reset in-memory vector index
-    stele.vector_index = stele._load_or_rebuild_index()
+    try:
+        stele.storage.clear_all()
+        # Clear persisted HNSW index files
+        for idx_file in stele.storage.index_dir.glob("*"):
+            idx_file.unlink()
+        # Reset in-memory vector index
+        stele.vector_index = stele._load_or_rebuild_index()
+    except OSError as e:
+        print(f"Error clearing data: {e}", file=sys.stderr)
+        return 1
     print("Done")
     return 0
 

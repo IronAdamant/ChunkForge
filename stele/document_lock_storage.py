@@ -16,6 +16,20 @@ from stele.storage_schema import connect
 from typing import Any
 
 
+def _hydrate_conflicts(rows: list) -> list[dict[str, Any]]:
+    """Convert conflict rows to dicts, parsing details_json inline."""
+    results = []
+    for row in rows:
+        d = dict(row)
+        if d.get("details_json"):
+            d["details"] = json.loads(d["details_json"])
+            del d["details_json"]
+        else:
+            d.pop("details_json", None)
+        results.append(d)
+    return results
+
+
 class DocumentLockStorage:
     """Per-document ownership, optimistic locking, and conflict log.
 
@@ -96,15 +110,16 @@ class DocumentLockStorage:
         """
         now = time.time()
         with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT locked_by, lock_ttl FROM documents WHERE document_path = ?",
                 (document_path,),
             ).fetchone()
             if row is None:
                 return {"refreshed": False, "reason": "document_not_found"}
-            if row[0] != agent_id:
+            if row["locked_by"] != agent_id:
                 return {"refreshed": False, "reason": "not_owner"}
-            new_ttl = ttl if ttl is not None else row[1]
+            new_ttl = ttl if ttl is not None else row["lock_ttl"]
             conn.execute(
                 "UPDATE documents SET locked_at = ?, lock_ttl = ? "
                 "WHERE document_path = ?",
@@ -123,13 +138,14 @@ class DocumentLockStorage:
     ) -> dict[str, Any]:
         """Release ownership.  Only the holder can release."""
         with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT locked_by FROM documents WHERE document_path = ?",
                 (document_path,),
             ).fetchone()
             if row is None:
                 return {"released": False, "reason": "document_not_found"}
-            if row[0] != agent_id:
+            if row["locked_by"] != agent_id:
                 return {"released": False, "reason": "not_owner"}
             conn.execute(
                 "UPDATE documents SET locked_by = NULL, locked_at = NULL "
@@ -219,32 +235,29 @@ class DocumentLockStorage:
         """Get aggregate lock and conflict statistics."""
         now = time.time()
         with connect(self.db_path) as conn:
-            row = conn.execute(
+            total_locked = conn.execute(
                 "SELECT COUNT(*) FROM documents WHERE locked_by IS NOT NULL"
-            ).fetchone()
-            total_locked = row[0]
+            ).fetchone()[0]
 
-            row = conn.execute(
+            expired_locks = conn.execute(
                 "SELECT COUNT(*) FROM documents "
                 "WHERE locked_by IS NOT NULL "
                 "AND (locked_at + lock_ttl) < ?",
                 (now,),
-            ).fetchone()
-            expired_locks = row[0]
+            ).fetchone()[0]
 
-            row = conn.execute("SELECT COUNT(*) FROM document_conflicts").fetchone()
-            total_conflicts = row[0]
+            total_conflicts = conn.execute(
+                "SELECT COUNT(*) FROM document_conflicts"
+            ).fetchone()[0]
 
-            row = conn.execute(
+            last_conflict_at = conn.execute(
                 "SELECT MAX(created_at) FROM document_conflicts"
-            ).fetchone()
-            last_conflict_at = row[0]
+            ).fetchone()[0]
 
-            agents_row = conn.execute(
+            active_agents = conn.execute(
                 "SELECT COUNT(DISTINCT locked_by) FROM documents "
                 "WHERE locked_by IS NOT NULL"
-            ).fetchone()
-            active_agents = agents_row[0]
+            ).fetchone()[0]
 
         return {
             "locked_documents": total_locked,
@@ -403,17 +416,7 @@ class DocumentLockStorage:
             )
             params.append(limit)
             rows = conn.execute(query, params).fetchall()
-
-            results = []
-            for row in rows:
-                d = dict(row)
-                if d.get("details_json"):
-                    d["details"] = json.loads(d["details_json"])
-                    del d["details_json"]
-                else:
-                    d.pop("details_json", None)
-                results.append(d)
-            return results
+            return _hydrate_conflicts(rows)
 
     def prune_conflicts(
         self,

@@ -220,6 +220,11 @@ def migrate_database(db_path: Path) -> None:
             )
             changed = True
 
+        # Index on staleness_score for fast stale-chunk queries
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chunks_staleness ON chunks(staleness_score)"
+        )
+
         # Conflict log table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS document_conflicts (

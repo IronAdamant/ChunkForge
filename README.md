@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-green.svg)](https://github.com/IronAdamant/Stele)
-[![Tests](https://img.shields.io/badge/tests-412%20passed-brightgreen.svg)](https://github.com/IronAdamant/Stele/actions)
+[![Tests](https://img.shields.io/badge/tests-573%20passed-brightgreen.svg)](https://github.com/IronAdamant/Stele/actions)
 
 Stele helps LLM agents avoid re-reading unchanged files by caching chunk data with semantic search. Documents are routed through modality-specific chunkers, chunk content is stored in SQLite, and an HNSW vector index enables fast O(log n) retrieval. Only modified chunks trigger reprocessing.
 
@@ -477,7 +477,7 @@ Run `stele` with the `environment_check` MCP tool, or call `engine.check_environ
 
 ```bash
 pip install -e ".[dev]"
-pytest                              # 412 tests
+pytest                              # 573 tests
 pytest --cov=stele                  # With coverage
 python benchmarks/run_all.py        # Performance benchmarks
 mypy stele/                         # Type checking
