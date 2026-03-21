@@ -6,8 +6,10 @@ Local context cache for LLM agents. 100% offline, zero required dependencies.
 
 ```
 Stele (engine.py) -- main orchestrator
+  |-- Config (config.py) -- .stele.toml loader with minimal TOML parser
   |-- Chunkers (text, code, image, pdf, audio, video)
-  |     \-- BaseChunker ABC + Chunk dataclass (chunkers/base.py)
+  |     |-- BaseChunker ABC + Chunk dataclass (chunkers/base.py)
+  |     \-- CodeChunker: Python AST, tree-sitter (optional), regex fallback
   |-- VectorIndex (HNSW, index.py) + BM25Index (bm25.py)
   |-- IndexStore (index_store.py) -- persistent index serialization
   |-- StorageBackend (storage.py, SQLite + filesystem)
@@ -20,8 +22,8 @@ Stele (engine.py) -- main orchestrator
 
 APIs:
   |-- CLI (cli.py + cli_metadata.py)
-  |-- HTTP REST (mcp_server.py, 21 tools, threaded, dynamic discovery)
-  \-- MCP stdio (mcp_stdio.py, 29 tools, JSON-RPC for Claude Desktop)
+  |-- HTTP REST (mcp_server.py, 28 tools, threaded, dynamic discovery)
+  \-- MCP stdio (mcp_stdio.py, 30 tools, JSON-RPC for Claude Desktop)
 
 Concurrency:
   |-- RWLock (rwlock.py) -- read-write lock for engine thread safety
@@ -91,6 +93,10 @@ Backward compat: core.py re-exports Stele + Chunk
 - **Change notifications**: `change_notifications` table in coordination DB. Written after `index_documents()` and `detect_changes_and_update()`. Agents poll via `get_notifications(since=timestamp, exclude_self=agent_id)`. Enables near-real-time awareness: "what files did other agents change since my last check?"
 - **SymbolGraphManager**: Extracted from `engine.py` into `symbol_graph.py` following the `SessionManager` delegate pattern. Owns: symbol extraction, edge resolution, staleness propagation, find_references, find_definition, impact_radius, rebuild_graph. Engine delegates with locking wrappers.
 - **Cross-worktree chunk sharing**: Not implemented — not architecturally needed. The signature cache (`content_hash → semantic_signature` in `_chunk_and_store`) already prevents recomputation for unchanged content. Each worktree needs its own chunk records because file content may differ between worktrees.
+- **`.stele.toml` config**: `config.py` loads `<project_root>/.stele.toml` with `[stele]` section. Uses stdlib `tomllib` (3.11+) with minimal fallback parser for 3.9-3.10. Explicit constructor params override config file values. Supports: `storage_dir`, `chunk_size`, `max_chunk_size`, `merge_threshold`, `change_threshold`, `search_alpha`, `skip_dirs`.
+- **Tree-sitter code chunking**: `CodeChunker` tries tree-sitter for JS/TS, Java, C/C++, Go, Rust, Ruby, PHP when installed (`pip install stele[tree-sitter]`). Falls back to regex if not available. Uses `_DEFINITION_TYPES` dict to identify top-level node types per language. Grammar packages are lazy-loaded and cached.
+- **Chunk history query**: `get_chunk_history(chunk_id=, document_path=, limit=)` exposes the `chunk_history` table via engine and both MCP servers. History tracks previous versions when the same chunk_id is updated in-place.
+- **Performance benchmarks**: `benchmarks/` directory with `bench_chunking.py`, `bench_storage.py`, `bench_search.py`, and `run_all.py` runner. Zero deps, standalone-runnable, `--quick` mode for CI.
 
 ## SQLite Tables
 
@@ -112,6 +118,7 @@ Coordination DB (`<git-common-dir>/stele/coordination.db`):
 - `index.py` and `bm25.py` have zero internal dependencies.
 - `numpy_compat.py` is the single source for `sig_to_bytes()`, `sig_from_bytes()`, `cosine_similarity()`.
 - Chunker modules only import from `chunkers/base.py`.
+- `config.py` imports nothing from stele internals — standalone TOML loader.
 - `coordination.py` and `env_checks.py` are standalone with zero internal deps.
 - No circular imports exist in the dependency graph.
 
@@ -119,7 +126,7 @@ Coordination DB (`<git-common-dir>/stele/coordination.db`):
 
 ```bash
 pip install -e ".[dev]"
-pytest                    # 287 tests (286 pass, 1 skipped without mcp SDK)
+pytest                    # 400 tests (399 pass, 1 skipped without mcp SDK)
 mypy stele/
 ruff check stele/
 ```

@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from stele.config import load_config, apply_config
 from stele.coordination import CoordinationBackend, detect_git_common_dir
 from stele.rwlock import RWLock
 from stele.symbol_graph import SymbolGraphManager
@@ -84,25 +85,40 @@ class Stele:
         storage_dir: Optional[str] = None,
         project_root: Optional[str] = None,
         enable_coordination: bool = True,
-        chunk_size: int = DEFAULT_CHUNK_SIZE,
-        max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE,
-        merge_threshold: float = DEFAULT_MERGE_THRESHOLD,
-        change_threshold: float = DEFAULT_CHANGE_THRESHOLD,
-        search_alpha: float = DEFAULT_SEARCH_ALPHA,
+        chunk_size: Optional[int] = None,
+        max_chunk_size: Optional[int] = None,
+        merge_threshold: Optional[float] = None,
+        change_threshold: Optional[float] = None,
+        search_alpha: Optional[float] = None,
         skip_dirs: Optional[set] = None,
     ):
         self._project_root = self._detect_project_root(project_root)
-        if storage_dir is None:
-            storage_dir = os.environ.get("STELE_STORAGE_DIR")
-        if storage_dir is None and self._project_root is not None:
-            storage_dir = str(self._project_root / ".stele")
-        self.storage = StorageBackend(storage_dir)
-        self.chunk_size = chunk_size
-        self.max_chunk_size = max_chunk_size
-        self.merge_threshold = merge_threshold
-        self.change_threshold = change_threshold
-        self.search_alpha = search_alpha
-        self.skip_dirs = self.DEFAULT_SKIP_DIRS | (skip_dirs or set())
+
+        # Load .stele.toml config — explicit constructor params win
+        file_cfg = load_config(self._project_root)
+        cfg = apply_config(
+            file_cfg,
+            storage_dir=storage_dir,
+            chunk_size=chunk_size,
+            max_chunk_size=max_chunk_size,
+            merge_threshold=merge_threshold,
+            change_threshold=change_threshold,
+            search_alpha=search_alpha,
+            skip_dirs=skip_dirs,
+        )
+
+        resolved_storage = cfg.get("storage_dir", storage_dir)
+        if resolved_storage is None:
+            resolved_storage = os.environ.get("STELE_STORAGE_DIR")
+        if resolved_storage is None and self._project_root is not None:
+            resolved_storage = str(self._project_root / ".stele")
+        self.storage = StorageBackend(resolved_storage)
+        self.chunk_size = cfg.get("chunk_size", self.DEFAULT_CHUNK_SIZE)
+        self.max_chunk_size = cfg.get("max_chunk_size", self.DEFAULT_MAX_CHUNK_SIZE)
+        self.merge_threshold = cfg.get("merge_threshold", self.DEFAULT_MERGE_THRESHOLD)
+        self.change_threshold = cfg.get("change_threshold", self.DEFAULT_CHANGE_THRESHOLD)
+        self.search_alpha = cfg.get("search_alpha", self.DEFAULT_SEARCH_ALPHA)
+        self.skip_dirs = self.DEFAULT_SKIP_DIRS | cfg.get("skip_dirs", set())
         self._init_chunkers()
         self.vector_index = self._load_or_rebuild_index()
         self.session_manager = SessionManager(self.storage, self.vector_index)
@@ -898,6 +914,24 @@ class Stele:
             if document_path is not None:
                 document_path = self._normalize_path(document_path)
             return self.storage.get_change_history(limit, document_path)
+
+    def get_chunk_history(
+        self,
+        chunk_id: Optional[str] = None,
+        document_path: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Get chunk version history.
+
+        Args:
+            chunk_id: Filter by specific chunk ID
+            document_path: Filter by document path
+            limit: Max entries to return
+        """
+        with self._lock.read_lock():
+            if document_path is not None:
+                document_path = self._normalize_path(document_path)
+            return self.storage.get_chunk_history(chunk_id, document_path, limit)
 
     def _classify_chunks_for_change(
         self, new_chunks: list, old_chunks_meta: list,

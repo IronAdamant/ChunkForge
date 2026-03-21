@@ -5,6 +5,24 @@ All notable changes to Stele will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-03-21
+
+### Added
+- **`.stele.toml` configuration** — Project-level config file loaded from `<project_root>/.stele.toml`. Supports `storage_dir`, `chunk_size`, `max_chunk_size`, `merge_threshold`, `change_threshold`, `search_alpha`, `skip_dirs` under a `[stele]` section. Uses stdlib `tomllib` (Python 3.11+) with a minimal fallback parser for 3.9-3.10. Explicit constructor params override config values.
+- **Tree-sitter code chunking** — `CodeChunker` now uses tree-sitter AST parsing for JavaScript, TypeScript, Java, C, C++, Go, Rust, Ruby, and PHP when installed (`pip install stele[tree-sitter]`). Falls back to regex patterns if tree-sitter is not available. Grammar packages are lazy-loaded and cached.
+- **Chunk history query tools** — `get_chunk_history(chunk_id=, document_path=, limit=)` method on engine, exposed as MCP tools on both HTTP (28 tools total) and stdio (30 tools total) servers. Queries the `chunk_history` table for chunk version history.
+- **Performance benchmarks** — `benchmarks/` directory with `bench_chunking.py`, `bench_storage.py`, `bench_search.py`, and `run_all.py` runner. Zero external dependencies, standalone-runnable, `--quick` mode for CI.
+- **`[tree-sitter]` optional dependency group** — `pip install stele[tree-sitter]` installs tree-sitter + 9 language grammar packages.
+- **`tests/test_config.py`** (18 tests) — TOML parser, config loading, config merging, engine integration.
+- **`tests/test_chunk_history.py`** (8 tests) — Storage and engine chunk history queries.
+- **`tests/test_tree_sitter.py`** (13 tests) — Tree-sitter chunking for JS, TS, Go, Rust, Java, C, plus large files and edge cases.
+
+### Changed
+- **MCP tools**: HTTP 28 (was 27), stdio 30 (was 29)
+- **Engine constructor** — Now accepts `Optional[int]`/`Optional[float]` for numeric params (was fixed defaults), enabling config file values to slot in between.
+- **Python AST chunking** — Refactored to share `_boundaries_to_chunks()` with tree-sitter path.
+- **400 tests** (was 355), 1 skipped (MCP SDK not installed)
+
 ## [0.8.0] - 2026-03-16
 
 ### Added

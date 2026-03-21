@@ -597,6 +597,28 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
                 },
             ),
             Tool(
+                name="get_chunk_history",
+                description="Get chunk version history — shows how chunks changed over time",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "chunk_id": {
+                            "type": "string",
+                            "description": "Filter by specific chunk ID",
+                        },
+                        "document_path": {
+                            "type": "string",
+                            "description": "Filter by document path",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max entries to return (default: 50)",
+                            "default": 50,
+                        },
+                    },
+                },
+            ),
+            Tool(
                 name="get_notifications",
                 description="Get change notifications from other agents (what files changed since last check)",
                 inputSchema={
@@ -766,6 +788,12 @@ def create_server(storage_dir: Optional[str] = None) -> Any:
                 result = engine.check_environment()
             elif name == "clean_bytecache":
                 result = engine.clean_bytecache()
+            elif name == "get_chunk_history":
+                result = engine.get_chunk_history(
+                    chunk_id=arguments.get("chunk_id"),
+                    document_path=arguments.get("document_path"),
+                    limit=arguments.get("limit", 50),
+                )
             elif name == "get_notifications":
                 result = engine.get_notifications(
                     since=arguments.get("since"),

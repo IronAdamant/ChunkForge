@@ -460,6 +460,28 @@ _TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
             "required": [],
         },
     },
+    "get_chunk_history": {
+        "description": "Get chunk version history. Shows how chunks changed over time.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "chunk_id": {
+                    "type": "string",
+                    "description": "Filter by specific chunk ID",
+                },
+                "document_path": {
+                    "type": "string",
+                    "description": "Filter by document path",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max entries to return (default: 50)",
+                    "default": 50,
+                },
+            },
+            "required": [],
+        },
+    },
     "get_notifications": {
         "description": "Get change notifications from other agents (what files changed since last check).",
         "parameters": {
@@ -584,6 +606,7 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
             "list_agents": self.stele.list_agents,
             "environment_check": self.stele.check_environment,
             "clean_bytecache": self.stele.clean_bytecache,
+            "get_chunk_history": self.stele.get_chunk_history,
             "get_notifications": self.stele.get_notifications,
         }
 

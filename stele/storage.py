@@ -578,6 +578,70 @@ class StorageBackend:
         """Get symbol and edge statistics."""
         return self._symbol_storage.get_symbol_stats()
 
+    # Chunk history methods
+
+    def get_chunk_history(
+        self,
+        chunk_id: Optional[str] = None,
+        document_path: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Query chunk version history.
+
+        Args:
+            chunk_id: Filter by specific chunk ID
+            document_path: Filter by document path (joins via chunks table)
+            limit: Max entries to return
+
+        Returns:
+            List of history entries with chunk_id, version, content_hash,
+            created_at, and document_path.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+
+            if chunk_id and document_path:
+                cursor = conn.execute(
+                    "SELECT h.chunk_id, h.version, h.content_hash, "
+                    "h.created_at, c.document_path "
+                    "FROM chunk_history h "
+                    "JOIN chunks c ON h.chunk_id = c.chunk_id "
+                    "WHERE h.chunk_id = ? AND c.document_path = ? "
+                    "ORDER BY h.created_at DESC LIMIT ?",
+                    (chunk_id, document_path, limit),
+                )
+            elif chunk_id:
+                cursor = conn.execute(
+                    "SELECT h.chunk_id, h.version, h.content_hash, "
+                    "h.created_at, c.document_path "
+                    "FROM chunk_history h "
+                    "JOIN chunks c ON h.chunk_id = c.chunk_id "
+                    "WHERE h.chunk_id = ? "
+                    "ORDER BY h.created_at DESC LIMIT ?",
+                    (chunk_id, limit),
+                )
+            elif document_path:
+                cursor = conn.execute(
+                    "SELECT h.chunk_id, h.version, h.content_hash, "
+                    "h.created_at, c.document_path "
+                    "FROM chunk_history h "
+                    "JOIN chunks c ON h.chunk_id = c.chunk_id "
+                    "WHERE c.document_path = ? "
+                    "ORDER BY h.created_at DESC LIMIT ?",
+                    (document_path, limit),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT h.chunk_id, h.version, h.content_hash, "
+                    "h.created_at, c.document_path "
+                    "FROM chunk_history h "
+                    "JOIN chunks c ON h.chunk_id = c.chunk_id "
+                    "ORDER BY h.created_at DESC LIMIT ?",
+                    (limit,),
+                )
+
+            return [dict(row) for row in cursor.fetchall()]
+
     # Staleness methods
 
     def set_staleness(self, chunk_id: str, score: float) -> None:
