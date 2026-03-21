@@ -2,6 +2,21 @@
 
 Chronological record of development activity on Stele, maintained for LLM agent context.
 
+## 2026-03-21 - v0.10.2 Lock Deduplication & Storage Improvements
+
+### Refactoring
+- Extracted `lock_ops.py` (shared lock primitives): `refresh_lock`, `record_conflict`, `query_conflicts`, `release_agent_locks`, `reap_expired_locks`, `hydrate_conflicts`
+- Both `DocumentLockStorage` and `CoordinationBackend` now delegate to `lock_ops` for shared operations
+- `delete` parameter controls UPDATE-NULL (documents table) vs DELETE (shared_locks table)
+- `storage_delegates.py`: compressed from 309 to 140 lines — removed redundant docstrings, kept full type signatures for mypy/IDE safety
+- `metadata_storage.get_change_history()`: added SQL `LIKE` pre-filter when filtering by `document_path` — avoids loading entire change_history table into memory. Python filter still handles exact structural matching.
+
+### Impact
+- Eliminated ~120 lines of duplicated lock SQL between document_lock_storage.py and coordination.py
+- Future bug fixes to lock refresh/conflict/reap only need to happen in lock_ops.py
+- Change history queries with document_path filter now O(matches) instead of O(total)
+- Total: 573 pass, 1 skipped
+
 ## 2026-03-21 - v0.10.1 Codebase Cleanup
 
 ### Bug fixes

@@ -19,7 +19,8 @@
 | `stele/session_storage.py` | Session table operations, KV-cache | None | test_session.py |
 | `stele/metadata_storage.py` | Annotations and change history tables | None | test_metadata.py |
 | `stele/symbol_storage.py` | Symbols and symbol edges tables | None | test_symbol_storage.py |
-| `stele/document_lock_storage.py` | Per-worktree document locks and conflicts | None | test_conflicts.py |
+| `stele/lock_ops.py` | Shared lock primitives (refresh, conflict, reap) | None | test_conflicts.py, test_worktree_safety.py |
+| `stele/document_lock_storage.py` | Per-worktree document locks and conflicts | lock_ops | test_conflicts.py |
 | `stele/session.py` | `SessionManager` - session lifecycle | storage | test_session.py |
 | `stele/index.py` | `HNSWIndex` - pure-Python HNSW vector index | chunkers.numpy_compat | test_index.py |
 | `stele/index_store.py` | HNSW/BM25 persistence (JSON+zlib) | None | test_index_store.py |
@@ -28,7 +29,7 @@
 | `stele/symbols.py` | `SymbolExtractor` - dispatcher + Python AST | symbol_patterns | test_symbols.py |
 | `stele/symbol_patterns.py` | `Symbol` dataclass + 10 language regex extractors | None | test_symbols.py |
 | `stele/symbol_graph.py` | `SymbolGraphManager` - edges, staleness, queries | symbols, storage | test_symbols.py |
-| `stele/coordination.py` | `CoordinationBackend` - cross-worktree shared DB | agent_registry, change_notifications, document_lock_storage | test_worktree_safety.py |
+| `stele/coordination.py` | `CoordinationBackend` - cross-worktree shared DB | agent_registry, change_notifications, lock_ops | test_worktree_safety.py |
 | `stele/change_notifications.py` | Change notification storage for coordination DB | None | test_worktree_safety.py |
 | `stele/agent_registry.py` | Agent registration, heartbeat, reaping | None | test_worktree_safety.py |
 | `stele/env_checks.py` | Stale bytecache + editable install detection | None | test_env_checks.py |

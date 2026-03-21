@@ -3,19 +3,19 @@
 Shared SQLite database in the git common directory for document locks,
 agent registration, and conflict logging across worktrees.  Falls back
 transparently when no git common directory is available.
+
+Shared lock primitives live in ``lock_ops.py``.
 """
 
 from __future__ import annotations
 
-import json
 import sqlite3
-import time
 from pathlib import Path
 from typing import Any
 
 from stele import agent_registry
 from stele import change_notifications as _cn
-from stele.document_lock_storage import _hydrate_conflicts
+from stele import lock_ops
 
 
 def detect_git_common_dir(project_root: Path | None) -> Path | None:
@@ -145,27 +145,22 @@ class CoordinationBackend:
     def register_agent(
         self, agent_id: str, worktree_root: str, pid: int | None = None
     ) -> dict[str, Any]:
-        """Register an agent with heartbeat."""
         return agent_registry.register_agent(
             self._connect, agent_id, worktree_root, pid
         )
 
     def heartbeat(self, agent_id: str) -> dict[str, Any]:
-        """Update heartbeat timestamp for a registered agent."""
         return agent_registry.heartbeat(self._connect, agent_id)
 
     def deregister_agent(self, agent_id: str) -> dict[str, Any]:
-        """Mark agent as stopped and release all its shared locks."""
         return agent_registry.deregister_agent(self._connect, agent_id)
 
     def list_agents(
         self, active_only: bool = True, stale_timeout: float = 600.0
     ) -> list[dict[str, Any]]:
-        """List registered agents with staleness detection."""
         return agent_registry.list_agents(self._connect, active_only, stale_timeout)
 
     def reap_stale_agents(self, timeout: float = 600.0) -> dict[str, Any]:
-        """Mark agents with no heartbeat as stopped and release locks."""
         return agent_registry.reap_stale_agents(self._connect, timeout)
 
     # -- Shared document locks ------------------------------------------------
@@ -182,6 +177,8 @@ class CoordinationBackend:
         force: bool = False,
     ) -> dict[str, Any]:
         """Acquire a shared cross-worktree document lock."""
+        import time
+
         now = time.time()
         with self._connect() as conn:
             row = conn.execute(
@@ -196,7 +193,6 @@ class CoordinationBackend:
                 expired = now > locked_at + current_ttl
 
                 if owner == agent_id:
-                    # Re-acquire (refresh)
                     conn.execute(
                         "UPDATE shared_locks SET locked_at = ?, lock_ttl = ? "
                         "WHERE document_path = ?",
@@ -215,8 +211,9 @@ class CoordinationBackend:
                     }
 
                 if force and not expired:
-                    self._record_conflict(
+                    lock_ops.record_conflict(
                         conn,
+                        "shared_conflicts",
                         document_path,
                         owner,
                         agent_id,
@@ -272,6 +269,8 @@ class CoordinationBackend:
 
     def get_lock_status(self, document_path: str) -> dict[str, Any]:
         """Check shared lock status. Expired locks are cleaned up."""
+        import time
+
         now = time.time()
         with self._connect() as conn:
             row = conn.execute(
@@ -303,66 +302,34 @@ class CoordinationBackend:
         self, document_path: str, agent_id: str, ttl: float | None = None
     ) -> dict[str, Any]:
         """Refresh lock TTL without releasing."""
-        now = time.time()
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT locked_by, lock_ttl FROM shared_locks WHERE document_path = ?",
-                (document_path,),
-            ).fetchone()
-            if row is None:
-                return {"refreshed": False, "reason": "not_locked"}
-            if row["locked_by"] != agent_id:
-                return {"refreshed": False, "reason": "not_owner"}
-            new_ttl = ttl if ttl is not None else row["lock_ttl"]
-            conn.execute(
-                "UPDATE shared_locks SET locked_at = ?, lock_ttl = ? "
-                "WHERE document_path = ?",
-                (now, new_ttl, document_path),
+            return lock_ops.refresh_lock(
+                conn,
+                "shared_locks",
+                document_path,
+                agent_id,
+                ttl,
+                not_found_reason="not_locked",
             )
-            conn.commit()
-            return {"refreshed": True, "expires_at": now + new_ttl}
 
     def release_agent_locks(self, agent_id: str) -> dict[str, Any]:
         """Release all shared locks held by an agent."""
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT document_path FROM shared_locks WHERE locked_by = ?",
-                (agent_id,),
-            ).fetchall()
-            docs = [r["document_path"] for r in rows]
-            if docs:
-                conn.execute(
-                    "DELETE FROM shared_locks WHERE locked_by = ?",
-                    (agent_id,),
-                )
-                conn.commit()
-            return {"released_count": len(docs), "documents": docs}
+            return lock_ops.release_agent_locks(
+                conn,
+                "shared_locks",
+                agent_id,
+                delete=True,
+            )
 
     def reap_expired_locks(self) -> dict[str, Any]:
         """Clear all expired shared locks."""
-        now = time.time()
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT document_path, locked_by FROM shared_locks "
-                "WHERE (locked_at + lock_ttl) < ?",
-                (now,),
-            ).fetchall()
-            if rows:
-                conn.execute(
-                    "DELETE FROM shared_locks WHERE (locked_at + lock_ttl) < ?",
-                    (now,),
-                )
-                conn.commit()
-            return {
-                "reaped_count": len(rows),
-                "documents": [
-                    {
-                        "document_path": r["document_path"],
-                        "was_locked_by": r["locked_by"],
-                    }
-                    for r in rows
-                ],
-            }
+            return lock_ops.reap_expired_locks(
+                conn,
+                "shared_locks",
+                delete=True,
+            )
 
     # -- Conflict log ---------------------------------------------------------
 
@@ -378,30 +345,20 @@ class CoordinationBackend:
         resolution: str = "rejected",
         details: dict[str, Any] | None = None,
     ) -> int | None:
-        now = time.time()
-        details_json = json.dumps(details) if details else None
         conn = conn_or_none if conn_or_none is not None else self._connect()
         try:
-            cursor = conn.execute(
-                "INSERT INTO shared_conflicts"
-                " (document_path, agent_a, agent_b, conflict_type,"
-                " expected_version, actual_version,"
-                " resolution, details_json, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    document_path,
-                    agent_a,
-                    agent_b,
-                    conflict_type,
-                    expected_version,
-                    actual_version,
-                    resolution,
-                    details_json,
-                    now,
-                ),
+            return lock_ops.record_conflict(
+                conn,
+                "shared_conflicts",
+                document_path,
+                agent_a,
+                agent_b,
+                conflict_type,
+                expected_version,
+                actual_version,
+                resolution,
+                details,
             )
-            conn.commit()
-            return cursor.lastrowid
         finally:
             if conn_or_none is None:
                 conn.close()
@@ -438,36 +395,24 @@ class CoordinationBackend:
     ) -> list[dict[str, Any]]:
         """Retrieve shared conflict history."""
         with self._connect() as conn:
-            conditions: list[str] = []
-            params: list[Any] = []
-            if document_path is not None:
-                conditions.append("document_path = ?")
-                params.append(document_path)
-            if agent_id is not None:
-                conditions.append("(agent_a = ? OR agent_b = ?)")
-                params.extend([agent_id, agent_id])
-
-            where = "WHERE " + " AND ".join(conditions) if conditions else ""
-            query = (
-                f"SELECT * FROM shared_conflicts {where} "
-                "ORDER BY created_at DESC LIMIT ?"
+            return lock_ops.query_conflicts(
+                conn,
+                "shared_conflicts",
+                document_path,
+                agent_id,
+                limit,
             )
-            params.append(limit)
-            rows = conn.execute(query, params).fetchall()
-            return _hydrate_conflicts(rows)
 
     # -- Change notifications (delegated to stele.change_notifications) -------
 
     def notify_change(
         self, document_path: str, change_type: str, agent_id: str
     ) -> None:
-        """Record a change notification visible to all worktrees."""
         _cn.notify_change(
             self._connect, self._agent_worktree, document_path, change_type, agent_id
         )
 
     def notify_changes_batch(self, changes: list[tuple], agent_id: str) -> int:
-        """Batch-write change notifications."""
         return _cn.notify_changes_batch(
             self._connect, self._agent_worktree, changes, agent_id
         )
@@ -478,7 +423,6 @@ class CoordinationBackend:
         exclude_agent: str | None = None,
         limit: int = 100,
     ) -> dict[str, Any]:
-        """Get change notifications, optionally since a timestamp."""
         return _cn.get_notifications(self._connect, since, exclude_agent, limit)
 
     def prune_notifications(
@@ -486,5 +430,4 @@ class CoordinationBackend:
         max_age_seconds: float | None = None,
         max_entries: int | None = None,
     ) -> int:
-        """Prune old change notifications. Returns deleted count."""
         return _cn.prune_notifications(self._connect, max_age_seconds, max_entries)

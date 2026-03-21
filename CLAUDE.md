@@ -42,6 +42,7 @@ Concurrency:
   \-- fcntl file locking (index_store.py) -- cross-process index safety
 
 Conflict prevention:
+  |-- LockOps (lock_ops.py) -- shared lock primitives (refresh, conflict, reap)
   |-- DocumentLockStorage (document_lock_storage.py) -- per-worktree locks
   |-- CoordinationBackend (coordination.py) + agent_registry.py + change_notifications.py
   |-- Per-document locks (acquire/release/force-steal with TTL expiry)
@@ -110,7 +111,7 @@ Backward compat: core.py re-exports Stele + Chunk
 - **Performance benchmarks**: `benchmarks/` directory with `bench_chunking.py`, `bench_storage.py`, `bench_search.py`, and `run_all.py` runner. Zero deps, standalone-runnable, `--quick` mode for CI.
 - **Agent-supplied semantic embeddings**: Two-tier signature system. Tier 1 (always): 128-dim statistical signatures for change detection. Tier 2 (optional): agent-supplied semantic summaries or raw vectors for search quality. `store_semantic_summary(chunk_id, summary)` computes signature from agent's description; `store_embedding(chunk_id, vector)` stores raw vectors. HNSW index uses agent signature when available, falls back to statistical. Zero new dependencies — the agent IS the embedding model.
 - **Thread-local connection pool**: `ConnectionPool` in `connection_pool.py` gives each thread a single reused SQLite connection. The `connect()` helper in `storage_schema.py` is pool-aware: uses the pool when one is initialized (by `StorageBackend.__init__`), falls back to fresh connections otherwise (coordination DB, tests). Eliminates ~70 per-method connection opens. `row_factory` is reset to `None` on each context-manager entry to prevent state leakage. `close_all()` for clean shutdown.
-- **Shared conflict hydration**: `_hydrate_conflicts()` in `document_lock_storage.py` is a shared helper used by both `DocumentLockStorage.get_conflicts()` and `CoordinationBackend.get_conflicts()` to parse `details_json` fields.
+- **Shared lock operations**: `lock_ops.py` contains shared primitives (`refresh_lock`, `record_conflict`, `query_conflicts`, `release_agent_locks`, `reap_expired_locks`, `hydrate_conflicts`) used by both `DocumentLockStorage` and `CoordinationBackend`. Follows the same zero-internal-deps pattern as `agent_registry.py`. The `delete` parameter controls whether release NULLs columns (documents table) or deletes rows (shared_locks table).
 - **MCP server constants**: `DEFAULT_MCP_PORT = 9876` and `HEARTBEAT_INTERVAL = 30` defined in `mcp_server.py`, reused by CLI.
 - **Staleness index**: `idx_chunks_staleness` on `chunks(staleness_score)` added during migration for fast stale-chunk queries.
 - **Text pattern search**: `search_text(pattern, regex=, document_path=, limit=)` provides perfect-recall exact/regex search across stored chunk content. Complements semantic (HNSW) and keyword (BM25) search. Uses `str.find()` for substring, stdlib `re` for regex. Zero dependencies. Key use case: verify all usages before renaming/removing symbols.

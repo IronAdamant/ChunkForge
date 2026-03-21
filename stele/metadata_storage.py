@@ -173,9 +173,13 @@ class MetadataStorage:
         with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             if document_path:
-                # Fetch all, filter in Python, then limit
+                # SQL pre-filter narrows to rows containing the path string,
+                # then Python filters for exact structural match.
                 cursor = conn.execute(
-                    "SELECT * FROM change_history ORDER BY timestamp DESC"
+                    "SELECT * FROM change_history "
+                    "WHERE summary_json LIKE ? "
+                    "ORDER BY timestamp DESC",
+                    (f"%{document_path}%",),
                 )
             else:
                 cursor = conn.execute(
