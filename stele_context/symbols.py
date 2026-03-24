@@ -263,6 +263,15 @@ class SymbolExtractor:
 
         symbols: list[Symbol] = []
 
+        # Collect node IDs of ast.Name/ast.Attribute that are ast.Call.func
+        # so the ast.Name pass can skip them (already captured with kind="function").
+        _call_func_node_ids: set[int] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(
+                node.func, (ast.Name, ast.Attribute)
+            ):
+                _call_func_node_ids.add(id(node.func))
+
         for node in ast.walk(tree):
             line = getattr(node, "lineno", None)
 
@@ -319,6 +328,26 @@ class SymbolExtractor:
                         Symbol(
                             node.func.attr,
                             "function",
+                            "reference",
+                            chunk_id,
+                            doc_path,
+                            line,
+                        )
+                    )
+            elif isinstance(node, ast.Name):
+                # Capture name references beyond direct calls: function-as-value
+                # (keyword args, assignments, returns, collection elements).
+                # Skip names already captured as ast.Call.func (kind="function"),
+                # Store-context names (assignment targets), and the discard name.
+                if (
+                    id(node) not in _call_func_node_ids
+                    and isinstance(node.ctx, ast.Load)
+                    and node.id != "_"
+                ):
+                    symbols.append(
+                        Symbol(
+                            node.id,
+                            "name",
                             "reference",
                             chunk_id,
                             doc_path,

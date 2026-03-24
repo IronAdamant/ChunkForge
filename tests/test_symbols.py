@@ -57,6 +57,37 @@ class TestSymbolExtractorPython:
         refs = [s for s in syms if s.role == "reference"]
         assert any(s.name == "method_name" for s in refs)
 
+    def test_function_as_value_reference(self):
+        """Function passed as keyword arg, assigned, or returned."""
+        code = (
+            "def helper():\n    pass\n\n"
+            "run(callback=helper)\n"
+            "fn = helper\n"
+            "items = [helper]\n"
+        )
+        syms = self.ext.extract(code, "test.py", "c1", "py")
+        refs = [s for s in syms if s.role == "reference" and s.name == "helper"]
+        # keyword arg, assignment RHS, and list element — all captured
+        assert len(refs) >= 3
+
+    def test_name_ref_no_duplicate_with_call(self):
+        """Direct call should produce kind='function', not a duplicate 'name'."""
+        code = "some_function(x)"
+        syms = self.ext.extract(code, "test.py", "c1", "py")
+        func_refs = [
+            s for s in syms if s.name == "some_function" and s.role == "reference"
+        ]
+        assert len(func_refs) == 1
+        assert func_refs[0].kind == "function"
+
+    def test_name_ref_skips_store_and_discard(self):
+        """Assignment targets and _ are not captured as name references."""
+        code = "_ = foo()\nresult = bar()"
+        syms = self.ext.extract(code, "test.py", "c1", "py")
+        refs = [s for s in syms if s.role == "reference"]
+        assert not any(s.name == "_" for s in refs)
+        assert not any(s.name == "result" for s in refs)
+
     def test_async_function(self):
         code = "async def fetch_data():\n    pass"
         syms = self.ext.extract(code, "test.py", "c1", "py")
