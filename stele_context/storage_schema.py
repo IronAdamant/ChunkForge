@@ -203,9 +203,13 @@ def migrate_database(db_path: Path) -> None:
                 "CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id)"
             )
 
-        # Documents table: ownership + optimistic locking
+        # Documents table: file_size for mtime+size fast-path
         cursor = conn.execute("PRAGMA table_info(documents)")
         doc_columns = {row[1] for row in cursor.fetchall()}
+        if "file_size" not in doc_columns:
+            conn.execute("ALTER TABLE documents ADD COLUMN file_size INTEGER")
+
+        # Documents table: ownership + optimistic locking
         if "locked_by" not in doc_columns:
             conn.execute("ALTER TABLE documents ADD COLUMN locked_by TEXT")
             conn.execute("ALTER TABLE documents ADD COLUMN locked_at REAL")

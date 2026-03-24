@@ -14,6 +14,7 @@ from typing import Any
 
 from stele_context.chunkers.base import Chunk
 from stele_context.chunkers.numpy_compat import sig_to_list
+from stele_context.engine_utils import file_unchanged
 from stele_context.index_store import (
     compute_chunk_ids_hash,
     save_bm25 as _save_bm25_store,
@@ -281,14 +282,20 @@ def get_context_unlocked(
             result["new"].append({"path": doc_path})
             continue
 
-        try:
-            modality = detect_modality(str(abs_path))
-            _, content_hash = read_and_hash(abs_path, modality)
-        except (OSError, UnicodeDecodeError, ValueError):
-            result["changed"].append({"path": doc_path, "reason": "Read error"})
-            continue
+        # Fast-path: skip full read if mtime+size unchanged
+        fast_unchanged = file_unchanged(abs_path, stored_doc)
+        if not fast_unchanged:
+            try:
+                modality = detect_modality(str(abs_path))
+                _, content_hash = read_and_hash(abs_path, modality)
+            except (OSError, UnicodeDecodeError, ValueError):
+                result["changed"].append({"path": doc_path, "reason": "Read error"})
+                continue
+            hash_unchanged = stored_doc["content_hash"] == content_hash
+        else:
+            hash_unchanged = True
 
-        if stored_doc["content_hash"] == content_hash:
+        if hash_unchanged:
             chunks = storage.search_chunks(document_path=doc_path)
             chunk_data = []
             for chunk in chunks:

@@ -15,6 +15,7 @@ from stele_context.chunkers.numpy_compat import (
     sig_from_bytes,
     sig_to_list,
 )
+from stele_context.engine_utils import file_unchanged
 
 
 # Keywords that signal a new definition boundary in code
@@ -221,11 +222,13 @@ def chunk_and_store(
     persist_chunks(chunks, doc_path, storage, vector_index, bm25_index, bm25_ready)
     symbol_manager.extract_document_symbols(doc_path, chunks)
 
+    st = abs_path.stat()
     storage.store_document(
         document_path=doc_path,
         content_hash=content_hash,
         chunk_count=len(chunks),
-        last_modified=abs_path.stat().st_mtime,
+        last_modified=st.st_mtime,
+        file_size=st.st_size,
     )
     return chunks
 
@@ -315,6 +318,18 @@ def index_documents_unlocked(
                             "path": norm_path,
                             "reason": "version_conflict",
                             **ver_result,
+                        }
+                    )
+                    continue
+
+            # Fast-path: skip full read if mtime+size unchanged
+            if existing_doc and not force_reindex:
+                if file_unchanged(abs_path, existing_doc):
+                    results["skipped"].append(
+                        {
+                            "path": norm_path,
+                            "reason": "Unchanged",
+                            "chunk_count": existing_doc["chunk_count"],
                         }
                     )
                     continue

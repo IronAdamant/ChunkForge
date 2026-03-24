@@ -314,6 +314,7 @@ class StorageBackend(StorageDelegatesMixin):
         content_hash: str,
         chunk_count: int,
         last_modified: float,
+        file_size: int | None = None,
     ) -> None:
         """Store document indexing information.
 
@@ -325,15 +326,24 @@ class StorageBackend(StorageDelegatesMixin):
             conn.execute(
                 """
                 INSERT INTO documents
-                (document_path, content_hash, chunk_count, indexed_at, last_modified)
-                VALUES (?, ?, ?, ?, ?)
+                (document_path, content_hash, chunk_count, indexed_at,
+                 last_modified, file_size)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(document_path) DO UPDATE SET
                     content_hash = excluded.content_hash,
                     chunk_count = excluded.chunk_count,
                     indexed_at = excluded.indexed_at,
-                    last_modified = excluded.last_modified
+                    last_modified = excluded.last_modified,
+                    file_size = excluded.file_size
             """,
-                (document_path, content_hash, chunk_count, now, last_modified),
+                (
+                    document_path,
+                    content_hash,
+                    chunk_count,
+                    now,
+                    last_modified,
+                    file_size,
+                ),
             )
 
     def get_document(self, document_path: str) -> dict[str, Any] | None:

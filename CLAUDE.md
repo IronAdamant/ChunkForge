@@ -74,6 +74,7 @@ Backward compat: core.py re-exports Stele + Chunk
 - **Per-modality thresholds**: Code merge=0.85 (preserve AST), change=0.80 (tolerate edits). Text merge=0.70, change=0.85.
 - **AST-boundary merge guard**: Code chunks starting with `def`/`class`/`function` are never merged with preceding chunk.
 - **Signature cache**: On re-index, `content_hash -> semantic_signature` lookup skips recomputation for unchanged chunks.
+- **mtime+size fast-path**: `file_unchanged(abs_path, stored_doc)` in `engine_utils.py` compares `st_mtime` and `st_size` against stored `last_modified` and `file_size` columns. When both match, `index_documents()`, `detect_changes_and_update()`, and `get_context()` skip the full file read + SHA-256 hash entirely. Falls back to full read when `file_size` is NULL (pre-migration data) or on stat error. The `documents` table stores `file_size INTEGER` (added via migration). Both `chunk_and_store()` and `detect_changes_unlocked()` persist mtime+size from `abs_path.stat()` after writes.
 - **128-dim semantic signatures**: trigrams (0-63), word unigrams (64-79), bigrams (80-95), structural (96-103), positional (104-115), reserved (116-127). Normalized to unit vectors.
 - **Token estimation**: `estimate_tokens()` in `chunkers/base.py` uses BPE merge-corrected regex (~95% accuracy).
 - **HNSW persistence**: `indices/hnsw_index.json.zlib`. Staleness via SHA-256 of sorted chunk IDs. FORMAT_VERSION for forward compat.
@@ -138,7 +139,7 @@ Backward compat: core.py re-exports Stele + Chunk
 `annotations`, `change_history` -- metadata (MetadataStorage)
 `symbols`, `symbol_edges` -- symbol graph (SymbolStorage)
 `document_conflicts` -- conflict audit log (DocumentLockStorage)
-`documents` columns: `locked_by`, `locked_at`, `lock_ttl`, `doc_version`
+`documents` columns: `locked_by`, `locked_at`, `lock_ttl`, `doc_version`, `file_size`
 
 Coordination DB (`<git-common-dir>/stele-context/coordination.db`):
 `agents` -- agent registry with heartbeats

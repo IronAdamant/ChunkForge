@@ -15,6 +15,7 @@ from stele_context.chunkers.numpy_compat import (
     sig_to_list,
 )
 
+from stele_context.engine_utils import file_unchanged
 from stele_context.indexing import (
     merge_similar_chunks,
     persist_chunks,
@@ -140,16 +141,31 @@ def detect_changes_unlocked(
             results["conflicts"].append({"path": doc_path, "error": str(e)})
             continue
 
+        stored_doc = storage.get_document(doc_path)
+        if stored_doc is None:
+            results["new"].append({"path": doc_path, "reason": "Not indexed"})
+            continue
+
+        # Fast-path: skip full read if mtime+size unchanged
+        if file_unchanged(abs_path, stored_doc):
+            results["unchanged"].append(doc_path)
+            chunks = storage.get_document_chunks(doc_path)
+            if session and session["turn_count"] > 0:
+                for chunk_meta in chunks:
+                    kv_data = storage.load_kv_state(
+                        session_id,
+                        chunk_meta["chunk_id"],
+                        session["turn_count"] - 1,
+                    )
+                    if kv_data is not None:
+                        results["kv_restored"] += 1
+            continue
+
         try:
             modality = detect_modality(str(abs_path))
             content, content_hash = read_and_hash(abs_path, modality)
         except (OSError, UnicodeDecodeError, ValueError):
             results["modified"].append({"path": doc_path, "reason": "Read error"})
-            continue
-
-        stored_doc = storage.get_document(doc_path)
-        if stored_doc is None:
-            results["new"].append({"path": doc_path, "reason": "Not indexed"})
             continue
 
         if stored_doc["content_hash"] == content_hash:
@@ -215,11 +231,13 @@ def detect_changes_unlocked(
                 storage,
             )
 
+            st = abs_path.stat()
             storage.store_document(
                 document_path=doc_path,
                 content_hash=content_hash,
                 chunk_count=len(new_chunks),
-                last_modified=abs_path.stat().st_mtime,
+                last_modified=st.st_mtime,
+                file_size=st.st_size,
             )
             storage.increment_doc_version(doc_path)
 

@@ -33,6 +33,7 @@ class StorageProto(Protocol):
         content_hash: str,
         chunk_count: int,
         last_modified: float,
+        file_size: int | None = None,
     ) -> None: ...
     def store_chunk(
         self,

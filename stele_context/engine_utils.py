@@ -10,6 +10,24 @@ from pathlib import Path
 from typing import Any
 
 
+def file_unchanged(abs_path: Path, stored_doc: dict) -> bool:
+    """Fast-path check: compare mtime+size without reading the file.
+
+    Returns True if the file's mtime and size both match the stored
+    values, meaning the file almost certainly hasn't changed.  Falls
+    back to False (triggering a full read + hash) on any stat error
+    or if the stored document lacks file_size (pre-migration data).
+    """
+    stored_size = stored_doc.get("file_size")
+    if stored_size is None:
+        return False
+    try:
+        st = abs_path.stat()
+    except OSError:
+        return False
+    return st.st_mtime == stored_doc["last_modified"] and st.st_size == stored_size
+
+
 def normalize_path(path: str, project_root: Path | None) -> str:
     """Convert a path to project-relative if within the project root."""
     p = Path(path)
