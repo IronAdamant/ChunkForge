@@ -148,6 +148,9 @@ _JS_PATTERN = (
     r"(?:^|\n)(?:export\s+)?(?:async\s+)?function\s+\w+"
     r"|(?:^|\n)(?:export\s+)?class\s+\w+"
     r"|(?:^|\n)(?:const|let|var)\s+\w+\s*=\s*(?:async\s+)?(?:function|\()"
+    r"|(?:^|\n)module\.exports\s*="
+    r"|(?:^|\n)describe\s*\("
+    r"|(?:^|\n)(?:it|test)\s*\("
 )
 
 _TS_PATTERN = (

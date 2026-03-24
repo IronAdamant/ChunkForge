@@ -375,18 +375,38 @@ def _build_module_hints(symbols: list[Symbol]) -> dict[str, set[str]]:
 
 
 def _module_matches_path(module_name: str, file_path: str) -> bool:
-    """Check if a dotted module name plausibly maps to a file path.
+    """Check if a module reference plausibly maps to a file path.
+
+    Handles Python dotted imports and JS/TS relative require paths.
 
     Examples:
-      'stele.engine' matches '.../stele/engine.py'
-      'os.path'           matches '.../os/path.py' or '.../os/path/__init__.py'
-      'utils'             matches '.../utils.py' or '.../utils/__init__.py'
+      'stele.engine'        matches '.../stele/engine.py'
+      'os.path'             matches '.../os/path.py'
+      '../models/Recipe'    matches '.../models/Recipe.js'
+      './utils'             matches '.../utils.js' or '.../utils/index.js'
     """
-    # Convert dotted module to path segments
-    parts = module_name.replace(".", "/")
     norm = file_path.replace("\\", "/")
-    # Match as directory component + filename (with or without extension)
-    return norm.endswith(f"/{parts}.py") or norm.endswith(f"/{parts}/__init__.py")
+
+    # Python: dotted module → /foo/bar.py or /foo/bar/__init__.py
+    parts = module_name.replace(".", "/")
+    if norm.endswith(f"/{parts}.py") or norm.endswith(f"/{parts}/__init__.py"):
+        return True
+
+    # JS/TS: relative require path → strip ./ ../ prefix, match suffix
+    if module_name.startswith(("./", "../")):
+        clean = module_name
+        while clean.startswith(("../", "./")):
+            clean = clean[clean.index("/") + 1 :]
+        if clean:
+            for ext in ("", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"):
+                suffix = f"{clean}{ext}"
+                if norm.endswith(f"/{suffix}") or norm == suffix:
+                    return True
+            for idx_name in (f"{clean}/index.js", f"{clean}/index.ts"):
+                if norm.endswith(f"/{idx_name}") or norm == idx_name:
+                    return True
+
+    return False
 
 
 def resolve_symbols(symbols: list[Symbol]) -> list[tuple[str, str, str, str]]:

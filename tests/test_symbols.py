@@ -891,6 +891,68 @@ class TestJSExtractionImprovements:
         defs = [s for s in syms if s.role == "definition" and s.kind == "function"]
         assert not any(s.name == "if" for s in defs)
 
+    def test_default_require_local_is_import_reference(self):
+        """const X = require('./local') should emit import reference, not variable def."""
+        code = "const Recipe = require('../models/Recipe')"
+        syms = self.ext.extract(code, "routes.js", "c1", "js")
+        refs = [s for s in syms if s.role == "reference"]
+        defs = [s for s in syms if s.role == "definition"]
+        # Variable name should be an import reference
+        assert any(s.name == "Recipe" and s.kind == "import" for s in refs)
+        # Module path should be a module reference
+        assert any(s.name == "../models/Recipe" and s.kind == "module" for s in refs)
+        # Should NOT be a variable definition
+        assert not any(s.name == "Recipe" and s.kind == "variable" for s in defs)
+
+    def test_default_require_external_no_import_ref(self):
+        """const fs = require('fs') should not emit import ref for variable name."""
+        code = "const fs = require('fs')"
+        syms = self.ext.extract(code, "app.js", "c1", "js")
+        refs = [s for s in syms if s.role == "reference"]
+        defs = [s for s in syms if s.role == "definition"]
+        # Module path reference is still emitted
+        assert any(s.name == "fs" and s.kind == "module" for s in refs)
+        # No import reference for the variable name (external module)
+        assert not any(s.name == "fs" and s.kind == "import" for s in refs)
+        # No variable definition either
+        assert not any(s.name == "fs" and s.kind == "variable" for s in defs)
+
+    def test_plain_const_still_definition(self):
+        """const X = value (no require) should still be a variable definition."""
+        code = "const PORT = 3000"
+        syms = self.ext.extract(code, "config.js", "c1", "js")
+        defs = [s for s in syms if s.role == "definition"]
+        assert any(s.name == "PORT" and s.kind == "variable" for s in defs)
+
+
+# -- Module path matching tests (JS) -----------------------------------------
+
+
+class TestModuleMatchesPathJS:
+    """Test _module_matches_path with JS require paths."""
+
+    def test_relative_require_matches_js(self):
+        assert _module_matches_path("../models/Recipe", "src/models/Recipe.js")
+
+    def test_relative_require_matches_ts(self):
+        assert _module_matches_path("./utils", "src/utils.ts")
+
+    def test_relative_require_matches_no_ext(self):
+        assert _module_matches_path("../lib/auth", "src/lib/auth")
+
+    def test_relative_require_matches_index(self):
+        assert _module_matches_path("./utils", "src/utils/index.js")
+
+    def test_nested_relative_require(self):
+        assert _module_matches_path("../../shared/types", "shared/types.ts")
+
+    def test_external_require_no_match(self):
+        assert not _module_matches_path("express", "src/models/express.js")
+
+    def test_python_still_works(self):
+        assert _module_matches_path("stele.engine", "/src/stele/engine.py")
+        assert not _module_matches_path("stele.engine", "/src/other/engine.py")
+
 
 # -- Symbol-boosted search tests ---------------------------------------------
 

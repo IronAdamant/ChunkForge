@@ -179,6 +179,21 @@ def search_unlocked(
         raise RuntimeError("BM25 index not initialized")
     bm25_scores = bm25_index.score_batch(query, candidate_ids)
 
+    # Normalize HNSW cosine scores within candidate set.
+    # Statistical signatures share structural features, producing clustered
+    # cosine values (typically 0.6-1.0).  Min-max scaling widens the
+    # effective range so blending with BM25 produces more differentiated scores.
+    if hnsw_scores:
+        max_hnsw = max(hnsw_scores.values())
+        min_hnsw = min(hnsw_scores.values())
+        hnsw_span = max_hnsw - min_hnsw
+        if hnsw_span > 0:
+            hnsw_norm = {k: (v - min_hnsw) / hnsw_span for k, v in hnsw_scores.items()}
+        else:
+            hnsw_norm = {k: 1.0 for k in hnsw_scores}
+    else:
+        hnsw_norm = hnsw_scores
+
     # Normalize BM25 scores to [0, 1]
     max_bm25 = max(bm25_scores.values()) if bm25_scores else 0.0
     if max_bm25 > 0:
@@ -190,7 +205,7 @@ def search_unlocked(
     alpha = compute_search_alpha(query, search_alpha)
     combined = {}
     for cid in candidate_ids:
-        vec_score = hnsw_scores.get(cid, 0.0)
+        vec_score = hnsw_norm.get(cid, 0.0)
         kw_score = bm25_norm.get(cid, 0.0)
         combined[cid] = alpha * vec_score + (1.0 - alpha) * kw_score
 

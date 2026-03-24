@@ -93,12 +93,30 @@ def extract_javascript(content: str, doc_path: str, chunk_id: str) -> list[Symbo
                 Symbol(m.group(1), "class", "definition", chunk_id, doc_path, i)
             )
 
-        # Variable/const definitions (including arrow functions)
-        m = re.match(r"(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=", stripped)
-        if m:
-            symbols.append(
-                Symbol(m.group(1), "variable", "definition", chunk_id, doc_path, i)
-            )
+        # Non-destructured require: const X = require('path')
+        # Must be checked before general variable pattern to avoid
+        # classifying the variable name as a definition instead of reference.
+        m_req = re.match(
+            r"(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*['\"]([^'\"]+)['\"]\s*\)",
+            stripped,
+        )
+        if m_req:
+            req_path = m_req.group(2)
+            # Local requires: emit import reference for variable name so
+            # find_references/impact_radius can trace the dependency.
+            # External requires (no ./ or ../ prefix): skip import ref to
+            # avoid spurious edges between files importing the same package.
+            if req_path.startswith((".", "/")):
+                symbols.append(
+                    Symbol(m_req.group(1), "import", "reference", chunk_id, doc_path, i)
+                )
+        else:
+            # Variable/const definitions (including arrow functions)
+            m = re.match(r"(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=", stripped)
+            if m:
+                symbols.append(
+                    Symbol(m.group(1), "variable", "definition", chunk_id, doc_path, i)
+                )
 
         # Class method definitions (indented, no function keyword)
         m = re.match(r"\s+(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{", line)

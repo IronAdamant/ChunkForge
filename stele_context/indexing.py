@@ -31,6 +31,13 @@ _DEF_STARTS = (
     "export function ",
     "export class ",
     "export default ",
+    "const ",
+    "let ",
+    "var ",
+    "module.exports",
+    "describe(",
+    "it(",
+    "test(",
 )
 
 
