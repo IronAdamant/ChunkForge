@@ -1037,3 +1037,124 @@ class TestIncrementalEdgeRebuild:
         refs = self.cf.find_references("old_func")
         # Definition count should be 0
         assert refs["definitions"] == []
+
+
+# -- HTML <script>/<link> edge resolution tests ------------------------------
+
+
+class TestHTMLEdgeResolution:
+    """Test that HTML <script src> and <link href> create cross-file edges."""
+
+    def test_module_matches_bare_js(self):
+        """Bare JS filename should match file path."""
+        assert _module_matches_path("app.js", "public/app.js")
+        assert _module_matches_path("app.js", "/proj/public/app.js")
+
+    def test_module_matches_bare_css(self):
+        """Bare CSS filename should match file path."""
+        assert _module_matches_path("styles.css", "public/styles.css")
+
+    def test_module_matches_subdir_path(self):
+        """Subdirectory web path should match."""
+        assert _module_matches_path("js/main.js", "public/js/main.js")
+
+    def test_module_matches_leading_slash(self):
+        """Leading-slash web path should match."""
+        assert _module_matches_path("/static/app.js", "public/static/app.js")
+
+    def test_module_no_match_wrong_file(self):
+        """Bare filename should not match unrelated file."""
+        assert not _module_matches_path("app.js", "public/other.js")
+
+    def test_module_no_match_external(self):
+        """External package names without file extensions should not match."""
+        assert not _module_matches_path("express", "src/express.js")
+
+    def test_resolve_html_to_js_file(self):
+        """HTML <script src="app.js"> should create edge to JS file's chunk."""
+        symbols = [
+            # JS file defines a function
+            Symbol("handleSubmit", "function", "definition", "c_js", "app.js"),
+            # HTML references the JS file via <script src>
+            Symbol("app.js", "module", "reference", "c_html", "index.html"),
+        ]
+        edges = resolve_symbols(symbols)
+        # Should have an edge from HTML to JS via module-to-file fallback
+        assert len(edges) >= 1
+        assert any(e[0] == "c_html" and e[1] == "c_js" for e in edges), (
+            f"Expected edge from c_html to c_js, got {edges}"
+        )
+
+    def test_resolve_html_to_css_file(self):
+        """HTML <link href="styles.css"> should create edge to CSS file's chunk."""
+        symbols = [
+            # CSS file defines a class
+            Symbol(".container", "css_class", "definition", "c_css", "styles.css"),
+            # HTML references the CSS file via <link href>
+            Symbol("styles.css", "module", "reference", "c_html", "index.html"),
+        ]
+        edges = resolve_symbols(symbols)
+        assert any(e[0] == "c_html" and e[1] == "c_css" for e in edges), (
+            f"Expected edge from c_html to c_css, got {edges}"
+        )
+
+    def test_resolve_html_onclick_to_js(self):
+        """HTML onclick="handleSubmit()" should link to JS definition."""
+        symbols = [
+            Symbol("handleSubmit", "function", "definition", "c_js", "app.js"),
+            Symbol("handleSubmit", "function", "reference", "c_html", "index.html"),
+        ]
+        edges = resolve_symbols(symbols)
+        assert any(
+            e[0] == "c_html" and e[1] == "c_js" and e[3] == "handleSubmit"
+            for e in edges
+        )
+
+    def test_integration_html_js_impact(self):
+        """End-to-end: impact_radius from HTML should reach JS through <script>."""
+        tmpdir = tempfile.mkdtemp()
+        (Path(tmpdir) / ".git").mkdir()
+        src = Path(tmpdir) / "public"
+        src.mkdir()
+
+        (src / "app.js").write_text(
+            "function renderPage() {\n  document.body.innerHTML = 'hello';\n}\n"
+        )
+        (src / "index.html").write_text(
+            "<!DOCTYPE html>\n<html>\n<head>\n"
+            '  <script src="app.js"></script>\n'
+            "</head>\n<body></body>\n</html>\n"
+        )
+
+        cf = Stele(project_root=str(tmpdir), enable_coordination=False)
+        cf.index_documents([str(src)])
+
+        # HTML should have an edge to app.js
+        edges = cf.get_stats()["storage"]["edge_count"]
+        assert edges >= 1, "Expected at least one edge from HTML to JS"
+
+    def test_integration_js_impact_from_html(self):
+        """impact_radius from JS file should now show HTML as dependent."""
+        tmpdir = tempfile.mkdtemp()
+        (Path(tmpdir) / ".git").mkdir()
+        src = Path(tmpdir) / "public"
+        src.mkdir()
+
+        (src / "api.js").write_text(
+            "function fetchData() {\n  return fetch('/api/data');\n}\n"
+        )
+        (src / "page.html").write_text(
+            "<html><head>\n"
+            '  <script src="api.js"></script>\n'
+            "</head><body></body></html>\n"
+        )
+
+        cf = Stele(project_root=str(tmpdir), enable_coordination=False)
+        cf.index_documents([str(src)])
+
+        # From the JS file's perspective, HTML depends on it
+        impact = cf.impact_radius(document_path="public/api.js", depth=1)
+        affected_files = {c["document_path"] for c in impact.get("chunks", [])}
+        assert "public/page.html" in affected_files, (
+            f"Expected page.html in affected files, got {affected_files}"
+        )

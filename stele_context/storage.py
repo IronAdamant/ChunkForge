@@ -423,6 +423,19 @@ class StorageBackend(StorageDelegatesMixin):
                 return None
             return sig_from_bytes(row[0])
 
+    def has_agent_signatures(self, chunk_ids: list[str]) -> set[str]:
+        """Return subset of chunk_ids that have non-null agent_signature (Tier 2)."""
+        if not chunk_ids:
+            return set()
+        with connect(self.db_path) as conn:
+            placeholders = ",".join("?" * len(chunk_ids))
+            cursor = conn.execute(
+                f"SELECT chunk_id FROM chunks WHERE chunk_id IN ({placeholders}) "
+                "AND agent_signature IS NOT NULL",
+                chunk_ids,
+            )
+            return {row[0] for row in cursor.fetchall()}
+
     # -- Chunk history --------------------------------------------------------
 
     def get_chunk_history(

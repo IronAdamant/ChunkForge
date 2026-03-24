@@ -231,3 +231,62 @@ class TestToolRegistryIntegration:
         index_tool = next(t for t in TOOL_DEFINITIONS if t["name"] == "index")
         props = index_tool["inputSchema"]["properties"]
         assert "summaries" in props
+
+
+class TestHasAgentSignatures:
+    """Tests for storage.has_agent_signatures() Tier 2 detection."""
+
+    def test_returns_tier2_chunks(self, tmp_path):
+        storage = StorageBackend(str(tmp_path / "store"))
+        sig = [0.0] * 128
+        storage.store_chunk("c1", "a.py", "h1", sig, 0, 50, 25, "code a")
+        storage.store_chunk("c2", "b.py", "h2", sig, 0, 50, 25, "code b")
+        storage.store_chunk("c3", "c.py", "h3", sig, 0, 50, 25, "code c")
+
+        # Give c1 and c3 agent signatures
+        agent_sig = [1.0] + [0.0] * 127
+        storage.store_agent_signature("c1", agent_sig)
+        storage.store_agent_signature("c3", agent_sig)
+
+        tier2 = storage.has_agent_signatures(["c1", "c2", "c3"])
+        assert tier2 == {"c1", "c3"}
+
+    def test_empty_input(self, tmp_path):
+        storage = StorageBackend(str(tmp_path / "store"))
+        assert storage.has_agent_signatures([]) == set()
+
+    def test_no_tier2(self, tmp_path):
+        storage = StorageBackend(str(tmp_path / "store"))
+        sig = [0.0] * 128
+        storage.store_chunk("c1", "a.py", "h1", sig, 0, 50, 25, "code a")
+        assert storage.has_agent_signatures(["c1"]) == set()
+
+
+class TestTier2SearchBoost:
+    """Tests that Tier 2 agent signatures get boosted in search ranking."""
+
+    def test_summary_improves_ranking(self, tmp_path):
+        """Chunks with agent summaries should rank higher for matching queries."""
+        (tmp_path / ".git").mkdir()
+
+        # Create two files with similar content but only one gets a summary
+        f1 = tmp_path / "auth_basic.py"
+        f1.write_text("def check_user(u):\n    return u.active\n")
+        f2 = tmp_path / "auth_jwt.py"
+        f2.write_text("def check_token(t):\n    return t.valid\n")
+
+        engine = Stele(project_root=str(tmp_path), enable_coordination=False)
+
+        # Index both files, only f2 gets a summary about JWT
+        engine.index_documents(
+            [str(f1), str(f2)],
+            summaries={str(f2): "JWT token validation and verification"},
+        )
+
+        results = engine.search("JWT token validation", top_k=2)
+        if len(results) >= 2:
+            # The file with the summary should rank higher
+            paths = [r["document_path"] for r in results]
+            assert paths[0] == "auth_jwt.py", (
+                f"Expected auth_jwt.py to rank first with Tier 2 boost, got {paths}"
+            )

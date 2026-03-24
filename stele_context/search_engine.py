@@ -23,6 +23,13 @@ from stele_context.index_store import (
 from stele_context.index import VectorIndex
 
 
+# Multiplicative boost for chunks with Tier 2 agent-supplied signatures.
+# Agent summaries encode human-readable semantics ("JWT auth middleware") which
+# produce more query-relevant signatures than statistical fingerprints alone.
+# Without this boost, the statistical Tier 1 signal can drown out Tier 2,
+# causing summary-enriched chunks to rank below irrelevant matches.
+TIER2_BOOST = 1.3
+
 _QUERY_STOP_WORDS = frozenset(
     {
         "the",
@@ -201,12 +208,17 @@ def search_unlocked(
     else:
         bm25_norm = bm25_scores
 
+    # Identify Tier 2 chunks (agent-supplied signatures) for boost
+    tier2_ids = storage.has_agent_signatures(candidate_ids)
+
     # Blend: alpha * vector + (1 - alpha) * keyword
     alpha = compute_search_alpha(query, search_alpha)
     combined = {}
     for cid in candidate_ids:
         vec_score = hnsw_norm.get(cid, 0.0)
         kw_score = bm25_norm.get(cid, 0.0)
+        if cid in tier2_ids:
+            vec_score *= TIER2_BOOST
         combined[cid] = alpha * vec_score + (1.0 - alpha) * kw_score
 
     ranked = sorted(combined.items(), key=lambda x: x[1], reverse=True)[:top_k]

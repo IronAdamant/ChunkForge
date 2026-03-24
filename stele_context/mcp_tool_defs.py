@@ -17,6 +17,100 @@ from typing import Any
 from stele_context.mcp_tool_defs_ext import TOOL_DEFINITIONS_EXT
 
 _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
+    # -- Primary: Agent Search (exact + structured) ---------------------------
+    {
+        "name": "agent_grep",
+        "description": "Primary search tool for LLM agents — like grep but with "
+        "scope annotation (enclosing function/class), syntactic classification "
+        "(comment/import/definition/string/code), deduplication of identical "
+        "lines, and token budgeting to prevent context overflow. "
+        "USE WHEN: auditing symbol usage, verifying dead code, understanding "
+        "how a pattern is used across the codebase, or any search needing "
+        "structured context-aware results. Preferred over search_text and "
+        "search for all verification and audit workflows.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Text or regex pattern to search for",
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": "Treat pattern as a regex (default: false)",
+                    "default": False,
+                },
+                "document_path": {
+                    "type": "string",
+                    "description": "Scope search to a specific file",
+                },
+                "classify": {
+                    "type": "boolean",
+                    "description": "Tag each match: comment/import/definition/string/code (default: true)",
+                    "default": True,
+                },
+                "include_scope": {
+                    "type": "boolean",
+                    "description": "Annotate each match with enclosing function/class (default: true)",
+                    "default": True,
+                },
+                "group_by": {
+                    "type": "string",
+                    "enum": ["file", "scope", "classification"],
+                    "description": "How to group results (default: file)",
+                    "default": "file",
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Token budget for results — matches added until budget reached (default: 4000)",
+                    "default": 4000,
+                },
+                "deduplicate": {
+                    "type": "boolean",
+                    "description": "Collapse structurally identical match lines (default: true)",
+                    "default": True,
+                },
+                "context_lines": {
+                    "type": "integer",
+                    "description": "Lines of context above/below each match (default: 0)",
+                    "default": 0,
+                },
+            },
+            "required": ["pattern"],
+        },
+    },
+    {
+        "name": "search_text",
+        "description": "Exact substring or regex search with perfect recall — "
+        "guaranteed to find every occurrence across all indexed chunks. "
+        "USE WHEN: need guaranteed completeness for simple patterns without "
+        "enrichment. For structured results with scope/classification, "
+        "prefer agent_grep.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Text pattern to search for",
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": "Treat pattern as a regex (default: false)",
+                    "default": False,
+                },
+                "document_path": {
+                    "type": "string",
+                    "description": "Limit search to a specific document",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max chunks to return (default: 50)",
+                    "default": 50,
+                },
+            },
+            "required": ["pattern"],
+        },
+    },
     # -- Primary: Search & Exploration ----------------------------------------
     {
         "name": "search",

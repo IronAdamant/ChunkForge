@@ -38,8 +38,14 @@ Examples:
   # Index documents
   stele-context index document1.py document2.md
 
+  # LLM-optimized search (primary search tool for agents)
+  stele-context agent-grep "createApp" --group-by file
+
   # Semantic search
   stele-context search "authentication logic" --top-k 5
+
+  # Exact text search
+  stele-context search-text "TODO" --regex
 
   # Show statistics
   stele-context stats
@@ -141,6 +147,95 @@ Examples:
         help="Number of results (default: 10)",
     )
     search_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output as JSON",
+    )
+
+    # search-text command
+    stext_parser = subparsers.add_parser(
+        "search-text",
+        help="Exact substring or regex search across indexed chunks",
+    )
+    stext_parser.add_argument(
+        "pattern",
+        help="Text or regex pattern to search for",
+    )
+    stext_parser.add_argument(
+        "--regex",
+        action="store_true",
+        help="Treat pattern as regex",
+    )
+    stext_parser.add_argument(
+        "--document",
+        help="Scope search to a specific file",
+    )
+    stext_parser.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Max results (default: 50)",
+    )
+    stext_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output as JSON",
+    )
+
+    # agent-grep command
+    agrep_parser = subparsers.add_parser(
+        "agent-grep",
+        help="LLM-optimized search with scope, classification, and token budget",
+    )
+    agrep_parser.add_argument(
+        "pattern",
+        help="Text or regex pattern to search for",
+    )
+    agrep_parser.add_argument(
+        "--regex",
+        action="store_true",
+        help="Treat pattern as regex",
+    )
+    agrep_parser.add_argument(
+        "--document",
+        help="Scope search to a specific file",
+    )
+    agrep_parser.add_argument(
+        "--no-classify",
+        action="store_true",
+        help="Disable syntactic classification",
+    )
+    agrep_parser.add_argument(
+        "--no-scope",
+        action="store_true",
+        help="Disable enclosing function/class annotation",
+    )
+    agrep_parser.add_argument(
+        "--group-by",
+        choices=["file", "scope", "classification"],
+        default="file",
+        help="How to group results (default: file)",
+    )
+    agrep_parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=4000,
+        help="Token budget for results (default: 4000)",
+    )
+    agrep_parser.add_argument(
+        "--no-dedup",
+        action="store_true",
+        help="Disable deduplication of identical lines",
+    )
+    agrep_parser.add_argument(
+        "--context-lines",
+        type=int,
+        default=0,
+        help="Lines of context above/below each match (default: 0)",
+    )
+    agrep_parser.add_argument(
         "--json",
         action="store_true",
         dest="output_json",
@@ -401,6 +496,79 @@ def cmd_index(args: argparse.Namespace, stele: Stele) -> int:
     return 0
 
 
+def cmd_search_text(args: argparse.Namespace, stele: Stele) -> int:
+    """Exact substring or regex search."""
+    result = stele.search_text(
+        args.pattern,
+        regex=args.regex,
+        document_path=getattr(args, "document", None),
+        limit=args.limit,
+    )
+
+    if args.output_json:
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    total = result["match_count"]
+    chunks = result["chunk_count"]
+    print(f"Found {total} match(es) across {chunks} chunk(s) for: {args.pattern}\n")
+
+    for r in result["results"]:
+        path = r["document_path"]
+        count = r["match_count"]
+        print(f"  {path} ({count} matches)")
+        preview = r.get("content_preview", "")[:200].replace("\n", " ")
+        if preview:
+            print(f"     {preview}")
+        print()
+
+    return 0
+
+
+def cmd_agent_grep(args: argparse.Namespace, stele: Stele) -> int:
+    """LLM-optimized search with scope, classification, and token budget."""
+    result = stele.agent_grep(
+        pattern=args.pattern,
+        regex=args.regex,
+        document_path=getattr(args, "document", None),
+        classify=not args.no_classify,
+        include_scope=not args.no_scope,
+        group_by=args.group_by,
+        max_tokens=args.max_tokens,
+        deduplicate=not args.no_dedup,
+        context_lines=args.context_lines,
+    )
+
+    if args.output_json:
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    total = result.get("total_matches", 0)
+    shown = result.get("matches_shown", 0)
+    tokens = result.get("tokens_used", 0)
+    print(f"Found {total} match(es), showing {shown} ({tokens} tokens used)\n")
+
+    for group in result.get("groups", []):
+        print(f"  [{group.get('key', '')}]")
+        for match in group.get("matches", []):
+            line_num = match.get("line", "?")
+            text = match.get("text", "").rstrip()
+            scope = match.get("scope", "")
+            cls = match.get("classification", "")
+            prefix = f"L{line_num}"
+            if scope:
+                prefix += f" ({scope})"
+            if cls:
+                prefix += f" [{cls}]"
+            print(f"    {prefix}: {text}")
+        print()
+
+    if result.get("truncated"):
+        print(f"  ... truncated at {args.max_tokens} token budget")
+
+    return 0
+
+
 def cmd_search(args: argparse.Namespace, stele: Stele) -> int:
     """Semantic search across indexed chunks."""
     results = stele.search(query=args.query, top_k=args.top_k)
@@ -556,6 +724,8 @@ def main(argv: list[str] | None = None) -> int:
         "remove": cmd_remove,
         "index": cmd_index,
         "search": cmd_search,
+        "search-text": cmd_search_text,
+        "agent-grep": cmd_agent_grep,
         "detect": cmd_detect,
         "stats": cmd_stats,
         "clear": cmd_clear,

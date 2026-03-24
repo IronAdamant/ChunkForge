@@ -377,13 +377,18 @@ def _build_module_hints(symbols: list[Symbol]) -> dict[str, set[str]]:
 def _module_matches_path(module_name: str, file_path: str) -> bool:
     """Check if a module reference plausibly maps to a file path.
 
-    Handles Python dotted imports and JS/TS relative require paths.
+    Handles Python dotted imports, JS/TS relative require paths,
+    and bare web paths from HTML <script src> / <link href>.
 
     Examples:
       'stele.engine'        matches '.../stele/engine.py'
       'os.path'             matches '.../os/path.py'
       '../models/Recipe'    matches '.../models/Recipe.js'
       './utils'             matches '.../utils.js' or '.../utils/index.js'
+      'app.js'              matches '.../app.js'
+      'js/main.js'          matches '.../js/main.js'
+      '/static/app.js'      matches '.../static/app.js'
+      'styles.css'          matches '.../styles.css'
     """
     norm = file_path.replace("\\", "/")
 
@@ -405,6 +410,15 @@ def _module_matches_path(module_name: str, file_path: str) -> bool:
             for idx_name in (f"{clean}/index.js", f"{clean}/index.ts"):
                 if norm.endswith(f"/{idx_name}") or norm == idx_name:
                     return True
+        return False
+
+    # HTML bare web paths: "app.js", "js/main.js", "/static/app.css"
+    # These come from <script src> and <link href> without ./ or ../ prefix.
+    _WEB_EXTS = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".css", ".scss", ".less")
+    clean = module_name.lstrip("/")
+    if clean and any(clean.endswith(ext) for ext in _WEB_EXTS):
+        if norm.endswith(f"/{clean}") or norm == clean:
+            return True
 
     return False
 
@@ -430,6 +444,14 @@ def resolve_symbols(symbols: list[Symbol]) -> list[tuple[str, str, str, str]]:
     # Build module hints for path-aware resolution
     module_hints = _build_module_hints(symbols)
 
+    # Build document path -> first chunk_id index for module-to-file fallback.
+    # When HTML <script src="app.js"> references a file but no definition
+    # name matches "app.js", this allows linking to any chunk in the target file.
+    doc_chunks: dict[str, str] = {}
+    for sym in symbols:
+        if sym.role == "definition" and sym.document_path not in doc_chunks:
+            doc_chunks[sym.document_path] = sym.chunk_id
+
     # Match references to definitions
     edges: list[tuple[str, str, str, str]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -443,6 +465,16 @@ def resolve_symbols(symbols: list[Symbol]) -> list[tuple[str, str, str, str]]:
             continue
 
         defs = definitions.get(sym.name, [])
+
+        # Module-to-file fallback: if a module reference (e.g. "app.js" from
+        # HTML <script src>) has no matching definition by name, check if it
+        # matches a document path directly. Creates edges to the target file.
+        if not defs and sym.kind == "module":
+            for dp, first_cid in doc_chunks.items():
+                if _module_matches_path(sym.name, dp):
+                    defs = [(first_cid, dp)]
+                    break
+
         if not defs:
             continue
 
