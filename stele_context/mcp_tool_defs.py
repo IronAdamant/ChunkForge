@@ -17,18 +17,75 @@ from typing import Any
 from stele_context.mcp_tool_defs_ext import TOOL_DEFINITIONS_EXT
 
 _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
+    # -- Primary: Search & Exploration ----------------------------------------
+    {
+        "name": "search",
+        "description": "Semantic + keyword hybrid search across indexed chunks. "
+        "Finds code by meaning, not just exact text — ranks results by "
+        "combined vector similarity and keyword relevance. "
+        "USE WHEN: exploring concepts ('how does auth work?'), finding "
+        "related code by meaning, discovering relevant files for a new task. "
+        "For exact pattern matching or verification, use agent_grep instead.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural language or keyword query",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of results",
+                    "default": 10,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "map",
+        "description": "Project overview: all indexed documents with chunk counts, "
+        "token totals, and annotations. "
+        "USE WHEN: starting work on a project, understanding what's indexed, "
+        "checking project scope and size.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "get_context",
+        "description": "Check cached document state — returns unchanged/changed/new "
+        "categorization per file. "
+        "USE WHEN: checking if files need re-indexing before starting work, "
+        "reading cached chunk content without re-reading disk.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Document paths to check",
+                },
+            },
+            "required": ["document_paths"],
+        },
+    },
+    # -- Primary: Indexing & Change Detection ---------------------------------
     {
         "name": "index",
-        "description": "Index documents for semantic chunking and caching. "
-        "Optionally accepts per-file semantic summaries to improve search "
-        "quality in a single pass (Tier 2 agent signatures).",
+        "description": "Index files into the semantic cache with automatic chunking. "
+        "Optionally pass per-file summaries to improve search quality "
+        "(Tier 2 agent signatures). "
+        "USE WHEN: after editing files to keep the index current, when adding "
+        "new files to the project. Run on modified files after every batch of changes.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "paths": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "File paths to index",
+                    "description": "File or directory paths to index",
                 },
                 "force_reindex": {
                     "type": "boolean",
@@ -48,56 +105,10 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "remove",
-        "description": "Remove a document and all its chunks, annotations, and index entries",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "document_path": {
-                    "type": "string",
-                    "description": "Path of the document to remove",
-                },
-            },
-            "required": ["document_path"],
-        },
-    },
-    {
-        "name": "search",
-        "description": "Semantic search across indexed chunks, returns content",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search query text",
-                },
-                "top_k": {
-                    "type": "integer",
-                    "description": "Number of results",
-                    "default": 10,
-                },
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "get_context",
-        "description": "Get cached context for documents (unchanged/changed/new)",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "document_paths": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Document paths to get context for",
-                },
-            },
-            "required": ["document_paths"],
-        },
-    },
-    {
         "name": "detect_changes",
-        "description": "Detect changes in indexed documents",
+        "description": "Detect and re-index changed documents since last indexing. "
+        "USE WHEN: after external edits, between agent passes, verifying "
+        "what changed before proceeding.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -123,8 +134,27 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "remove",
+        "description": "Remove a document and all its chunks, annotations, symbols, "
+        "and index entries. "
+        "USE WHEN: a file has been deleted from the project.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "document_path": {
+                    "type": "string",
+                    "description": "Path of the document to remove",
+                },
+            },
+            "required": ["document_path"],
+        },
+    },
+    # -- Secondary: Annotations -----------------------------------------------
+    {
         "name": "annotate",
-        "description": "Add an annotation to a document or chunk for LLM context",
+        "description": "Add a metadata annotation to a document or chunk. "
+        "USE WHEN: tagging code for later retrieval (TODO, deprecated, "
+        "needs-review), recording audit findings.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -259,6 +289,25 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
             "required": ["annotations"],
         },
     },
+    # -- Secondary: History & Stats -------------------------------------------
+    {
+        "name": "history",
+        "description": "Get chronological indexing history for documents",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Max entries to return",
+                    "default": 20,
+                },
+                "document_path": {
+                    "type": "string",
+                    "description": "Filter by document path",
+                },
+            },
+        },
+    },
     {
         "name": "prune_history",
         "description": "Prune old change history entries by age or count",
@@ -277,64 +326,17 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "map",
-        "description": "Get project overview: all documents with chunk counts, tokens, and annotations",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    {
-        "name": "history",
-        "description": "Get change history for indexed documents",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "type": "integer",
-                    "description": "Max entries to return",
-                    "default": 20,
-                },
-                "document_path": {
-                    "type": "string",
-                    "description": "Filter by document path",
-                },
-            },
-        },
-    },
-    {
         "name": "stats",
-        "description": "Get Stele statistics",
+        "description": "Get Stele statistics: storage counts, index health, config",
         "inputSchema": {
             "type": "object",
             "properties": {},
         },
     },
-    {
-        "name": "detect_modality",
-        "description": "Detect the modality of a file based on its extension",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "File path to detect modality for",
-                },
-            },
-            "required": ["path"],
-        },
-    },
-    {
-        "name": "get_supported_formats",
-        "description": "List supported file formats by modality",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
+    # -- Secondary: Session & KV Cache ----------------------------------------
     {
         "name": "get_relevant_kv",
-        "description": "Retrieve relevant cached KV state for a session",
+        "description": "Retrieve cached KV state for a session, matched by query",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -397,7 +399,7 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
     },
     {
         "name": "prune_chunks",
-        "description": "Prune least-relevant chunks from a session",
+        "description": "Prune least-relevant chunks from a session to stay within token budget",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -411,6 +413,29 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
                 },
             },
             "required": ["session_id", "max_tokens"],
+        },
+    },
+    # -- Utility: Modality Detection ------------------------------------------
+    {
+        "name": "detect_modality",
+        "description": "Detect file type (code/text/pdf/image/audio/video) from extension",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "File path to detect modality for",
+                },
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "get_supported_formats",
+        "description": "List supported file extensions by modality",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
         },
     },
 ]

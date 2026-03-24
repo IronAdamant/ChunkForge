@@ -82,6 +82,7 @@ def build_tool_map(
         "impact_radius": engine.impact_radius,
         "rebuild_symbols": engine.rebuild_symbol_graph,
         "stale_chunks": engine.stale_chunks,
+        "coupling": engine.coupling,
         # Document locking
         "acquire_document_lock": engine.acquire_document_lock,
         "refresh_document_lock": engine.refresh_document_lock,

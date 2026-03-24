@@ -588,9 +588,21 @@ class Stele:
         with self._lock.read_lock():
             return self.symbol_manager.find_definition(symbol)
 
-    def impact_radius(self, chunk_id: str, depth: int = 2) -> dict[str, Any]:
+    def impact_radius(
+        self,
+        chunk_id: str | None = None,
+        depth: int = 2,
+        document_path: str | None = None,
+    ) -> dict[str, Any]:
+        if document_path:
+            document_path = self._normalize_path(document_path)
         with self._lock.read_lock():
-            return self.symbol_manager.impact_radius(chunk_id, depth)
+            return self.symbol_manager.impact_radius(chunk_id, depth, document_path)
+
+    def coupling(self, document_path: str) -> dict[str, Any]:
+        document_path = self._normalize_path(document_path)
+        with self._lock.read_lock():
+            return self.symbol_manager.coupling(document_path)
 
     def rebuild_symbol_graph(self) -> dict[str, Any]:
         with self._lock.write_lock():

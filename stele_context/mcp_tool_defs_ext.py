@@ -1,8 +1,8 @@
 """
 Tool definitions for the Stele MCP stdio server (extended tools).
 
-Part 2: symbols, sessions, document locking, agents, environment, embeddings,
-chunk history, and notifications.
+Part 2: search (agent-optimized), symbols, sessions, document locking,
+agents, environment, embeddings, chunk history, and notifications.
 Each entry is a dict with name, description, and inputSchema.
 Standalone module with zero internal dependencies.
 """
@@ -12,15 +12,116 @@ from __future__ import annotations
 from typing import Any
 
 TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
+    # -- Primary: Agent Search (exact + structured) ---------------------------
+    {
+        "name": "agent_grep",
+        "description": "Primary search tool for LLM agents — like grep but with "
+        "scope annotation (enclosing function/class), syntactic classification "
+        "(comment/import/definition/string/code), deduplication of identical "
+        "lines, and token budgeting to prevent context overflow. "
+        "USE WHEN: auditing symbol usage, verifying dead code, understanding "
+        "how a pattern is used across the codebase, or any search needing "
+        "structured context-aware results. Preferred over search_text and "
+        "search for all verification and audit workflows.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Text or regex pattern to search for",
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": "Treat pattern as a regex (default: false)",
+                    "default": False,
+                },
+                "document_path": {
+                    "type": "string",
+                    "description": "Scope search to a specific file",
+                },
+                "classify": {
+                    "type": "boolean",
+                    "description": "Tag each match: comment/import/definition/string/code (default: true)",
+                    "default": True,
+                },
+                "include_scope": {
+                    "type": "boolean",
+                    "description": "Annotate each match with enclosing function/class (default: true)",
+                    "default": True,
+                },
+                "group_by": {
+                    "type": "string",
+                    "enum": ["file", "scope", "classification"],
+                    "description": "How to group results (default: file)",
+                    "default": "file",
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Token budget for results — matches added until budget reached (default: 4000)",
+                    "default": 4000,
+                },
+                "deduplicate": {
+                    "type": "boolean",
+                    "description": "Collapse structurally identical match lines (default: true)",
+                    "default": True,
+                },
+                "context_lines": {
+                    "type": "integer",
+                    "description": "Lines of context above/below each match (default: 0)",
+                    "default": 0,
+                },
+            },
+            "required": ["pattern"],
+        },
+    },
+    {
+        "name": "search_text",
+        "description": "Exact substring or regex search with perfect recall — "
+        "guaranteed to find every occurrence across all indexed chunks. "
+        "USE WHEN: need guaranteed completeness for simple patterns without "
+        "enrichment. For structured results with scope/classification, "
+        "prefer agent_grep.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Text pattern to search for",
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": "Treat pattern as a regex (default: false)",
+                    "default": False,
+                },
+                "document_path": {
+                    "type": "string",
+                    "description": "Limit search to a specific document",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max chunks to return (default: 50)",
+                    "default": 50,
+                },
+            },
+            "required": ["pattern"],
+        },
+    },
+    # -- Primary: Symbol Graph ------------------------------------------------
     {
         "name": "find_references",
-        "description": "Find all definitions and references of a symbol across the codebase (LSP-style)",
+        "description": "Find all definitions and usages of a symbol across the "
+        "codebase (LSP-style). Returns a verdict field "
+        "(unreferenced/referenced/external/not_found) for quick dead-code "
+        "checks. More precise than text search — uses the parsed symbol graph. "
+        "USE WHEN: verifying dead code before deletion, checking all callers "
+        "before refactoring a function signature, understanding who depends "
+        "on a symbol.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "symbol": {
                     "type": "string",
-                    "description": "Symbol name to search for (function, class, CSS class like '.btn', CSS ID like '#app')",
+                    "description": "Symbol name (function, class, CSS class like '.btn', CSS ID like '#app')",
                 },
             },
             "required": ["symbol"],
@@ -28,7 +129,9 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
     },
     {
         "name": "find_definition",
-        "description": "Find where a symbol is defined, with full chunk content",
+        "description": "Jump to where a symbol is defined, with full chunk content. "
+        "USE WHEN: reading a function/class implementation, verifying a "
+        "symbol's signature, understanding what a symbol does.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -42,7 +145,11 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
     },
     {
         "name": "impact_radius",
-        "description": "Find all chunks affected by changing a chunk (transitive dependents via symbol graph)",
+        "description": "Find all chunks affected by changing a chunk or file "
+        "(transitive dependents via symbol graph). "
+        "Accepts chunk_id or document_path (at least one required). "
+        "USE WHEN: assessing blast radius before editing, prioritizing test "
+        "coverage, understanding downstream effects of a change.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -50,37 +157,67 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "Chunk ID to analyze impact for",
                 },
+                "document_path": {
+                    "type": "string",
+                    "description": "File path to analyze impact for (all chunks in file used as seeds)",
+                },
                 "depth": {
                     "type": "integer",
                     "description": "Max hops through dependency graph (default: 2)",
                     "default": 2,
                 },
             },
-            "required": ["chunk_id"],
         },
     },
     {
-        "name": "rebuild_symbols",
-        "description": "Rebuild the entire symbol graph from stored chunks (use after upgrade or to repair)",
+        "name": "coupling",
+        "description": "Find files semantically coupled to a given file via shared "
+        "symbol dependencies. Returns coupled files sorted by strength with "
+        "direction (depends_on / depended_on_by / bidirectional) and shared "
+        "symbol names. "
+        "USE WHEN: assessing which files need co-modification, understanding "
+        "tight coupling for refactoring, identifying related files to review "
+        "together.",
         "inputSchema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "document_path": {
+                    "type": "string",
+                    "description": "File path to find coupled files for",
+                },
+            },
+            "required": ["document_path"],
         },
     },
     {
         "name": "stale_chunks",
-        "description": "Get chunks whose dependencies changed -- detects context rot through the symbol graph",
+        "description": "Find chunks whose dependencies changed — detects context "
+        "rot through the symbol graph. Staleness score: 0.8 = direct "
+        "dependency changed, 0.64 = transitive. "
+        "USE WHEN: checking if cached context is still valid after edits, "
+        "identifying stale files that need re-review after upstream changes.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "threshold": {
                     "type": "number",
-                    "description": "Minimum staleness score (0.0-1.0, default 0.3). 0.8 = direct dep changed, 0.64 = transitive",
+                    "description": "Minimum staleness score (0.0-1.0, default 0.3)",
                     "default": 0.3,
                 },
             },
         },
     },
+    {
+        "name": "rebuild_symbols",
+        "description": "Rebuild the entire symbol graph from stored chunks. "
+        "USE WHEN: after upgrade, to repair a corrupted graph, or after "
+        "bulk re-indexing.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    # -- Secondary: Sessions --------------------------------------------------
     {
         "name": "list_sessions",
         "description": "List sessions, optionally filtered by agent ID",
@@ -94,9 +231,11 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
             },
         },
     },
+    # -- Infrastructure: Document Locking -------------------------------------
     {
         "name": "acquire_document_lock",
-        "description": "Acquire exclusive write lock on a document for multi-agent ownership",
+        "description": "Acquire exclusive write lock on a document (multi-agent). "
+        "Auto-acquired by MCP server when agent_id is set.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -124,7 +263,7 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
     },
     {
         "name": "refresh_document_lock",
-        "description": "Refresh lock TTL without releasing -- prevents expiry during long operations",
+        "description": "Refresh lock TTL without releasing — prevents expiry during long operations",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -192,7 +331,7 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
     },
     {
         "name": "get_conflicts",
-        "description": "Get conflict history for documents or agents",
+        "description": "Get lock conflict audit log for documents or agents",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -220,6 +359,7 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
             "properties": {},
         },
     },
+    # -- Infrastructure: Agent Coordination -----------------------------------
     {
         "name": "list_agents",
         "description": "List agents registered across all worktrees with heartbeat status",
@@ -235,101 +375,10 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "environment_check",
-        "description": "Check for stale __pycache__, editable install mismatches, and other issues",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    {
-        "name": "clean_bytecache",
-        "description": "Remove orphaned .pyc files from stale __pycache__ directories",
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    {
-        "name": "store_semantic_summary",
-        "description": "Store agent's semantic summary for a chunk -- improves search using agent's understanding",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "chunk_id": {
-                    "type": "string",
-                    "description": "Chunk ID to annotate",
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "Semantic description (e.g. 'JWT middleware that validates tokens')",
-                },
-            },
-            "required": ["chunk_id", "summary"],
-        },
-    },
-    {
-        "name": "bulk_store_summaries",
-        "description": "Batch-store per-chunk semantic summaries -- "
-        "each chunk gets its own agent signature computed from its summary. "
-        "Use after indexing when you have per-chunk descriptions.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "summaries": {
-                    "type": "object",
-                    "additionalProperties": {"type": "string"},
-                    "description": "Mapping of chunk_id to semantic summary text. "
-                    'Example: {"chunk_abc123": "Database connection pool with retry logic"}',
-                },
-            },
-            "required": ["summaries"],
-        },
-    },
-    {
-        "name": "store_embedding",
-        "description": "Store a raw embedding vector for a chunk -- for agents with embedding API access",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "chunk_id": {
-                    "type": "string",
-                    "description": "Chunk ID to update",
-                },
-                "vector": {
-                    "type": "array",
-                    "items": {"type": "number"},
-                    "description": "Embedding vector (normalized to unit length)",
-                },
-            },
-            "required": ["chunk_id", "vector"],
-        },
-    },
-    {
-        "name": "get_chunk_history",
-        "description": "Get chunk version history -- shows how chunks changed over time",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "chunk_id": {
-                    "type": "string",
-                    "description": "Filter by specific chunk ID",
-                },
-                "document_path": {
-                    "type": "string",
-                    "description": "Filter by document path",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max entries to return (default: 50)",
-                    "default": 50,
-                },
-            },
-        },
-    },
-    {
         "name": "get_notifications",
-        "description": "Get change notifications from other agents (what files changed since last check)",
+        "description": "Get change notifications from other agents — what files "
+        "changed since your last check. "
+        "USE WHEN: checking for concurrent edits in multi-agent workflows.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -349,92 +398,105 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
             },
         },
     },
+    # -- Infrastructure: Environment ------------------------------------------
     {
-        "name": "search_text",
-        "description": "Search chunk content by exact substring or regex pattern. "
-        "Perfect recall for literal patterns — finds every occurrence across all "
-        "indexed chunks. Use before renaming/removing symbols to find all usages.",
+        "name": "environment_check",
+        "description": "Check for stale __pycache__, editable install mismatches, "
+        "and other environment issues",
         "inputSchema": {
             "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Text pattern to search for",
-                },
-                "regex": {
-                    "type": "boolean",
-                    "description": "Treat pattern as a regex (default: false)",
-                    "default": False,
-                },
-                "document_path": {
-                    "type": "string",
-                    "description": "Limit search to a specific document",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max chunks to return (default: 50)",
-                    "default": 50,
-                },
-            },
-            "required": ["pattern"],
+            "properties": {},
         },
     },
     {
-        "name": "agent_grep",
-        "description": "LLM-optimized code search — like grep but built for agents. "
-        "Returns matches with enclosing scope (function/class), syntactic "
-        "classification (comment/import/definition/string/code), deduplication "
-        "of identical lines, and a token budget to prevent context overflow. "
-        "Prefer over search_text when you need structured, context-aware results.",
+        "name": "clean_bytecache",
+        "description": "Remove orphaned .pyc files from stale __pycache__ directories",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    # -- Secondary: Semantic Enrichment ---------------------------------------
+    {
+        "name": "store_semantic_summary",
+        "description": "Store semantic summary for a chunk to improve search quality. "
+        "USE WHEN: you understand what a chunk does and want to improve "
+        "future search results for it.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "pattern": {
+                "chunk_id": {
                     "type": "string",
-                    "description": "Text or regex pattern to search for",
+                    "description": "Chunk ID to annotate",
                 },
-                "regex": {
-                    "type": "boolean",
-                    "description": "Treat pattern as a regex (default: false)",
-                    "default": False,
+                "summary": {
+                    "type": "string",
+                    "description": "Semantic description (e.g. 'JWT middleware that validates tokens')",
+                },
+            },
+            "required": ["chunk_id", "summary"],
+        },
+    },
+    {
+        "name": "bulk_store_summaries",
+        "description": "Batch-store per-chunk semantic summaries. Each chunk gets "
+        "its own agent signature computed from its summary. "
+        "USE WHEN: after indexing, when you have per-chunk descriptions.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "summaries": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                    "description": "Mapping of chunk_id to semantic summary text. "
+                    'Example: {"chunk_abc123": "Database connection pool with retry logic"}',
+                },
+            },
+            "required": ["summaries"],
+        },
+    },
+    {
+        "name": "store_embedding",
+        "description": "Store a raw embedding vector for a chunk — for agents with "
+        "embedding API access",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "chunk_id": {
+                    "type": "string",
+                    "description": "Chunk ID to update",
+                },
+                "vector": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "description": "Embedding vector (normalized to unit length)",
+                },
+            },
+            "required": ["chunk_id", "vector"],
+        },
+    },
+    # -- Secondary: Chunk History ---------------------------------------------
+    {
+        "name": "get_chunk_history",
+        "description": "Get chunk version history — shows how chunks changed over "
+        "indexing cycles",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "chunk_id": {
+                    "type": "string",
+                    "description": "Filter by specific chunk ID",
                 },
                 "document_path": {
                     "type": "string",
-                    "description": "Scope search to a specific file",
+                    "description": "Filter by document path",
                 },
-                "classify": {
-                    "type": "boolean",
-                    "description": "Tag each match: comment/import/definition/string/code (default: true)",
-                    "default": True,
-                },
-                "include_scope": {
-                    "type": "boolean",
-                    "description": "Annotate each match with enclosing function/class (default: true)",
-                    "default": True,
-                },
-                "group_by": {
-                    "type": "string",
-                    "enum": ["file", "scope", "classification"],
-                    "description": "How to group results (default: file)",
-                    "default": "file",
-                },
-                "max_tokens": {
+                "limit": {
                     "type": "integer",
-                    "description": "Token budget for results — matches added until budget reached (default: 4000)",
-                    "default": 4000,
-                },
-                "deduplicate": {
-                    "type": "boolean",
-                    "description": "Collapse structurally identical match lines (default: true)",
-                    "default": True,
-                },
-                "context_lines": {
-                    "type": "integer",
-                    "description": "Lines of context above/below each match (default: 0)",
-                    "default": 0,
+                    "description": "Max entries to return (default: 50)",
+                    "default": 50,
                 },
             },
-            "required": ["pattern"],
         },
     },
 ]

@@ -57,19 +57,20 @@ class TestHTTPServer:
             status, data = self._get(f"{url}/tools")
             assert status == 200
             tool_names = {t["name"] for t in data["tools"]}
-            # Must contain all 42 tools
+            # Must contain all tools
             assert "index" in tool_names
             assert "search" in tool_names
             assert "find_references" in tool_names
             assert "find_definition" in tool_names
             assert "impact_radius" in tool_names
+            assert "coupling" in tool_names
             assert "rebuild_symbols" in tool_names
             assert "stale_chunks" in tool_names
             assert "detect_modality" in tool_names
             assert "get_supported_formats" in tool_names
             assert "list_sessions" in tool_names
             assert "search_text" in tool_names
-            assert len(tool_names) == 44
+            assert len(tool_names) == 45
         finally:
             server.stop()
 

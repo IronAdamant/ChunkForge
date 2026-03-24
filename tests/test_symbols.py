@@ -410,6 +410,24 @@ class TestEngineSymbolIntegration:
         assert len(result["definitions"]) >= 1
         assert len(result["references"]) >= 1
 
+    def test_find_references_verdict_referenced(self):
+        self._write_and_index("lib.py", "def greet():\n    return 'hi'\n")
+        self._write_and_index("app.py", "from lib import greet\ngreet()\n")
+        result = self.cf.find_references("greet")
+        assert result["verdict"] == "referenced"
+
+    def test_find_references_verdict_unreferenced(self):
+        self._write_and_index("orphan.py", "def orphan_func():\n    pass\n")
+        result = self.cf.find_references("orphan_func")
+        assert result["verdict"] == "unreferenced"
+        assert len(result["definitions"]) >= 1
+        assert len(result["references"]) == 0
+
+    def test_find_references_verdict_not_found(self):
+        result = self.cf.find_references("nonexistent_symbol_xyz")
+        assert result["verdict"] == "not_found"
+        assert result["total"] == 0
+
     def test_impact_radius(self):
         self._write_and_index("base.py", "class Base:\n    pass\n")
         self._write_and_index(
@@ -418,8 +436,42 @@ class TestEngineSymbolIntegration:
         defn = self.cf.find_definition("Base")
         assert defn["count"] >= 1
         chunk_id = defn["definitions"][0]["chunk_id"]
-        impact = self.cf.impact_radius(chunk_id, depth=1)
+        impact = self.cf.impact_radius(chunk_id=chunk_id, depth=1)
         assert impact["affected_chunks"] >= 1
+        assert "affected_files" in impact
+
+    def test_impact_radius_by_document_path(self):
+        self._write_and_index("core.py", "def core_fn():\n    return 1\n")
+        self._write_and_index("user.py", "from core import core_fn\ncore_fn()\n")
+        core_path = str(Path(self.tmpdir) / "core.py")
+        impact = self.cf.impact_radius(document_path=core_path, depth=1)
+        assert impact["origin"] == self.cf._normalize_path(core_path)
+        assert impact["affected_chunks"] >= 1
+        assert impact["affected_files"] >= 1
+
+    def test_impact_radius_no_args_returns_error(self):
+        result = self.cf.impact_radius()
+        assert "error" in result
+
+    def test_coupling(self):
+        self._write_and_index("models.py", "class User:\n    pass\n")
+        self._write_and_index(
+            "views.py", "from models import User\ndef get_user():\n    return User()\n"
+        )
+        models_path = str(Path(self.tmpdir) / "models.py")
+        result = self.cf.coupling(models_path)
+        assert result["total_coupled"] >= 1
+        coupled = result["coupled_files"]
+        assert any("views" in c["path"] for c in coupled)
+        first = coupled[0]
+        assert "shared_symbols" in first
+        assert "direction" in first
+        assert first["direction"] in ("depends_on", "depended_on_by", "bidirectional")
+
+    def test_coupling_no_document(self):
+        result = self.cf.coupling("nonexistent.py")
+        assert result["total_coupled"] == 0
+        assert result["coupled_files"] == []
 
     def test_rebuild_symbol_graph(self):
         self._write_and_index("a.py", "def foo():\n    pass\n")

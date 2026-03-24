@@ -209,10 +209,24 @@ class SymbolGraphManager:
                 )
             return results
 
+        enriched_defs = _enrich(definitions)
+        enriched_refs = _enrich(references)
+
+        # Machine-readable verdict for quick dead-code checks
+        if not definitions and not references:
+            verdict = "not_found"
+        elif definitions and not references:
+            verdict = "unreferenced"
+        elif not definitions and references:
+            verdict = "external"
+        else:
+            verdict = "referenced"
+
         return {
             "symbol": symbol,
-            "definitions": _enrich(definitions),
-            "references": _enrich(references),
+            "verdict": verdict,
+            "definitions": enriched_defs,
+            "references": enriched_refs,
             "total": len(definitions) + len(references),
         }
 
@@ -243,12 +257,36 @@ class SymbolGraphManager:
 
     def impact_radius(
         self,
-        chunk_id: str,
+        chunk_id: str | None = None,
         depth: int = 2,
+        document_path: str | None = None,
     ) -> dict[str, Any]:
-        """Find all chunks affected by a change to this chunk (BFS)."""
+        """Find all chunks affected by a change to a chunk or file (BFS).
+
+        Accepts either ``chunk_id`` (single chunk) or ``document_path``
+        (all chunks in a file).  At least one must be provided.
+        """
+        # Resolve seed chunk IDs
+        if document_path and not chunk_id:
+            doc_chunks = self.storage.get_document_chunks(document_path)
+            if not doc_chunks:
+                return {
+                    "origin": document_path,
+                    "max_depth": depth,
+                    "affected_chunks": 0,
+                    "affected_files": 0,
+                    "chunks": [],
+                }
+            seed_ids = {c["chunk_id"] for c in doc_chunks}
+            origin = document_path
+        elif chunk_id:
+            seed_ids = {chunk_id}
+            origin = chunk_id
+        else:
+            return {"error": "Provide chunk_id or document_path"}
+
         visited: set[str] = set()
-        queue = deque([(chunk_id, 0)])
+        queue = deque((cid, 0) for cid in seed_ids)
         layers: dict[int, list[str]] = {}
 
         while queue:
@@ -265,12 +303,14 @@ class SymbolGraphManager:
                         queue.append((edge["source_chunk_id"], current_depth + 1))
 
         result_chunks = []
-        for d, chunk_ids in sorted(layers.items()):
-            for cid in chunk_ids:
-                if cid == chunk_id and d == 0:
+        affected_files: set[str] = set()
+        for d, chunk_ids_at_depth in sorted(layers.items()):
+            for cid in chunk_ids_at_depth:
+                if cid in seed_ids and d == 0:
                     continue
                 meta = self.storage.get_chunk(cid)
                 if meta:
+                    affected_files.add(meta["document_path"])
                     result_chunks.append(
                         {
                             "chunk_id": cid,
@@ -282,9 +322,10 @@ class SymbolGraphManager:
                     )
 
         return {
-            "origin_chunk_id": chunk_id,
+            "origin": origin,
             "max_depth": depth,
             "affected_chunks": len(result_chunks),
+            "affected_files": len(affected_files),
             "chunks": result_chunks,
         }
 
@@ -326,4 +367,90 @@ class SymbolGraphManager:
             "documents": len(by_doc),
             "symbols": total_symbols,
             "edges": len(edges),
+        }
+
+    def coupling(self, document_path: str) -> dict[str, Any]:
+        """Find files semantically coupled to a given file via symbol edges.
+
+        Queries all symbol edges involving chunks from the target document,
+        groups by the OTHER document, and counts shared symbols per pair.
+        """
+        doc_chunks = self.storage.get_document_chunks(document_path)
+        if not doc_chunks:
+            return {
+                "document_path": document_path,
+                "coupled_files": [],
+                "total_coupled": 0,
+            }
+
+        doc_chunk_ids = {c["chunk_id"] for c in doc_chunks}
+
+        # Collect edges in both directions
+        coupled: dict[str, dict[str, Any]] = {}
+        for cid in doc_chunk_ids:
+            # Outgoing: this file depends on other files
+            for edge in self.storage.get_outgoing_edges(cid):
+                target_chunk = self.storage.get_chunk(edge["target_chunk_id"])
+                if not target_chunk:
+                    continue
+                other_path = target_chunk["document_path"]
+                if other_path == document_path:
+                    continue
+                entry = coupled.setdefault(
+                    other_path,
+                    {
+                        "path": other_path,
+                        "symbols": set(),
+                        "outgoing": 0,
+                        "incoming": 0,
+                    },
+                )
+                entry["symbols"].add(edge["symbol_name"])
+                entry["outgoing"] += 1
+
+            # Incoming: other files depend on this file
+            for edge in self.storage.get_incoming_edges(cid):
+                source_chunk = self.storage.get_chunk(edge["source_chunk_id"])
+                if not source_chunk:
+                    continue
+                other_path = source_chunk["document_path"]
+                if other_path == document_path:
+                    continue
+                entry = coupled.setdefault(
+                    other_path,
+                    {
+                        "path": other_path,
+                        "symbols": set(),
+                        "outgoing": 0,
+                        "incoming": 0,
+                    },
+                )
+                entry["symbols"].add(edge["symbol_name"])
+                entry["incoming"] += 1
+
+        # Build result sorted by total edge count (strongest coupling first)
+        results = []
+        for entry in coupled.values():
+            total = entry["outgoing"] + entry["incoming"]
+            if entry["outgoing"] > 0 and entry["incoming"] > 0:
+                direction = "bidirectional"
+            elif entry["outgoing"] > 0:
+                direction = "depends_on"
+            else:
+                direction = "depended_on_by"
+            results.append(
+                {
+                    "path": entry["path"],
+                    "shared_symbols": sorted(entry["symbols"]),
+                    "shared_symbol_count": len(entry["symbols"]),
+                    "direction": direction,
+                    "edge_count": total,
+                }
+            )
+        results.sort(key=lambda x: x["edge_count"], reverse=True)
+
+        return {
+            "document_path": document_path,
+            "coupled_files": results,
+            "total_coupled": len(results),
         }
