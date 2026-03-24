@@ -121,6 +121,9 @@ class StorageDelegatesMixin:
     def search_symbol_names(self, tokens: list[str]) -> list[dict[str, Any]]:
         return self._symbol_storage.search_symbol_names(tokens)
 
+    def get_symbols_for_chunks(self, chunk_ids: list[str]) -> list[dict[str, Any]]:
+        return self._symbol_storage.get_symbols_for_chunks(chunk_ids)
+
     def get_symbol_stats(self) -> dict[str, Any]:
         return self._symbol_storage.get_symbol_stats()
 

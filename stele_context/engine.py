@@ -420,6 +420,40 @@ class Stele:
                 "results": matches,
             }
 
+    def agent_grep(
+        self,
+        pattern: str,
+        regex: bool = False,
+        document_path: str | None = None,
+        classify: bool = True,
+        include_scope: bool = True,
+        group_by: str = "file",
+        max_tokens: int = 4000,
+        deduplicate: bool = True,
+        context_lines: int = 0,
+    ) -> dict[str, Any]:
+        """LLM-optimized search: grep with scope, classification, token budget.
+
+        See :func:`stele_context.agent_grep.agent_grep` for full docs.
+        """
+        from stele_context.agent_grep import agent_grep as _agent_grep
+
+        with self._lock.read_lock():
+            if document_path is not None:
+                document_path = self._normalize_path(document_path)
+            return _agent_grep(
+                self.storage,
+                pattern,
+                regex=regex,
+                document_path=document_path,
+                classify=classify,
+                include_scope=include_scope,
+                group_by=group_by,
+                max_tokens=max_tokens,
+                deduplicate=deduplicate,
+                context_lines=context_lines,
+            )
+
     def list_sessions(self, agent_id: str | None = None) -> list[dict[str, Any]]:
         with self._lock.read_lock():
             return self.storage.list_sessions(agent_id=agent_id)

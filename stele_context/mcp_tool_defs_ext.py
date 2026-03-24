@@ -379,4 +379,62 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
             "required": ["pattern"],
         },
     },
+    {
+        "name": "agent_grep",
+        "description": "LLM-optimized code search — like grep but built for agents. "
+        "Returns matches with enclosing scope (function/class), syntactic "
+        "classification (comment/import/definition/string/code), deduplication "
+        "of identical lines, and a token budget to prevent context overflow. "
+        "Prefer over search_text when you need structured, context-aware results.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Text or regex pattern to search for",
+                },
+                "regex": {
+                    "type": "boolean",
+                    "description": "Treat pattern as a regex (default: false)",
+                    "default": False,
+                },
+                "document_path": {
+                    "type": "string",
+                    "description": "Scope search to a specific file",
+                },
+                "classify": {
+                    "type": "boolean",
+                    "description": "Tag each match: comment/import/definition/string/code (default: true)",
+                    "default": True,
+                },
+                "include_scope": {
+                    "type": "boolean",
+                    "description": "Annotate each match with enclosing function/class (default: true)",
+                    "default": True,
+                },
+                "group_by": {
+                    "type": "string",
+                    "enum": ["file", "scope", "classification"],
+                    "description": "How to group results (default: file)",
+                    "default": "file",
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "description": "Token budget for results — matches added until budget reached (default: 4000)",
+                    "default": 4000,
+                },
+                "deduplicate": {
+                    "type": "boolean",
+                    "description": "Collapse structurally identical match lines (default: true)",
+                    "default": True,
+                },
+                "context_lines": {
+                    "type": "integer",
+                    "description": "Lines of context above/below each match (default: 0)",
+                    "default": 0,
+                },
+            },
+            "required": ["pattern"],
+        },
+    },
 ]

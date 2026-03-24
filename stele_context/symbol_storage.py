@@ -232,6 +232,21 @@ class SymbolStorage:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def get_symbols_for_chunks(self, chunk_ids: list[str]) -> list[dict[str, Any]]:
+        """Get all symbols for a batch of chunk IDs."""
+        if not chunk_ids:
+            return []
+        placeholders = ",".join("?" * len(chunk_ids))
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            return [
+                dict(r)
+                for r in conn.execute(
+                    f"SELECT * FROM symbols WHERE chunk_id IN ({placeholders})",
+                    chunk_ids,
+                ).fetchall()
+            ]
+
     def get_symbol_stats(self) -> dict[str, Any]:
         """Get symbol and edge counts."""
         with connect(self.db_path) as conn:

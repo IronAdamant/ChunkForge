@@ -8,6 +8,7 @@ Local context cache for LLM agents. 100% offline, zero required dependencies.
 Stele Context (engine.py) -- thin facade orchestrator
   |-- indexing.py -- document indexing, chunk merging, expand paths
   |-- search_engine.py -- hybrid HNSW+BM25 search, context, stats
+  |-- agent_grep.py -- LLM-optimized search (scope, classify, budget, dedup)
   |-- change_detection.py -- detect file changes, re-index modified
   |-- engine_utils.py -- path normalization, lock routing, env checks
   |-- Config (config.py) -- .stele-context.toml loader with minimal TOML parser
@@ -117,7 +118,8 @@ Backward compat: core.py re-exports Stele + Chunk
 - **MCP server constants**: `DEFAULT_MCP_PORT = 9876` and `HEARTBEAT_INTERVAL = 30` defined in `mcp_server.py`, reused by CLI.
 - **Staleness index**: `idx_chunks_staleness` on `chunks(staleness_score)` added during migration for fast stale-chunk queries.
 - **Text pattern search**: `search_text(pattern, regex=, document_path=, limit=)` provides perfect-recall exact/regex search across stored chunk content. Complements semantic (HNSW) and keyword (BM25) search. Uses `str.find()` for substring, stdlib `re` for regex. Zero dependencies. Key use case: verify all usages before renaming/removing symbols.
-- **Unified tool registry**: `tool_registry.py` is the single source of truth for tool dispatch (`build_tool_map`), write-tool sets (`WRITE_TOOLS`), HTTP schema generation (`get_http_schemas`), and modality flag construction (`get_modality_flags`). Both servers expose identical 43-tool sets with modality_flags for utility tools. `mcp_schemas.py` was deleted; schemas generated from `mcp_tool_defs.py`. `WRITE_TOOLS` includes lock operations (`acquire_document_lock`, `release_document_lock`, `refresh_document_lock`, `release_agent_locks`) for auto agent_id injection.
+- **LLM-optimized search (agent_grep)**: `agent_grep(pattern, regex=, document_path=, classify=, include_scope=, group_by=, max_tokens=, deduplicate=, context_lines=)` wraps `search_text` with five LLM-specific enrichments: (1) **Token budget** — matches added until `max_tokens` reached, preventing context overflow; (2) **Scope annotation** — each match tagged with enclosing function/class from the symbol graph; (3) **Classification** — line-level heuristic tags: comment/import/definition/string/code; (4) **Deduplication** — structurally identical lines collapsed with `also_in` count and `also_in_files` list; (5) **Structured grouping** — results grouped by file, scope, or classification. Base line numbers computed per-chunk by summing newlines across preceding chunks. `agent_grep.py` is standalone (imports only `estimate_tokens`); `SymbolStorage.get_symbols_for_chunks()` provides batch symbol lookup.
+- **Unified tool registry**: `tool_registry.py` is the single source of truth for tool dispatch (`build_tool_map`), write-tool sets (`WRITE_TOOLS`), HTTP schema generation (`get_http_schemas`), and modality flag construction (`get_modality_flags`). Both servers expose identical 44-tool sets with modality_flags for utility tools. `mcp_schemas.py` was deleted; schemas generated from `mcp_tool_defs.py`. `WRITE_TOOLS` includes lock operations (`acquire_document_lock`, `release_document_lock`, `refresh_document_lock`, `release_agent_locks`) for auto agent_id injection.
 - **No redundant commits**: All modules using `connect()` or `with self._connect() as conn:` context managers never call `conn.commit()` inside the block — the context manager auto-commits on successful exit. This applies to storage modules, coordination modules (`coordination.py`, `agent_registry.py`, `change_notifications.py`), and `storage_schema.py`.
 - **MCP stdio server bundle**: `_ServerBundle` dataclass holds server, engine, and agent_id together. Replaces monkey-patching `_stele_engine`/`_stele_agent_id` onto the MCP Server object.
 - **Index store context managers**: Lock file handles in `index_store.py` use `with` statements for guaranteed cleanup. Read path uses nested try/finally to ensure unlock before close.
@@ -148,6 +150,7 @@ Coordination DB (`<git-common-dir>/stele-context/coordination.db`):
 - `config.py` imports nothing from stele internals — standalone TOML loader.
 - `coordination.py` delegates notifications to `change_notifications.py` (same pattern as `agent_registry.py`).
 - `env_checks.py` is standalone with zero internal deps.
+- `agent_grep.py` imports only `estimate_tokens` from `chunkers/base.py`. Receives storage as a parameter.
 - No circular imports exist in the dependency graph.
 
 ## Development
@@ -166,7 +169,8 @@ Entry points: `stele-context` (CLI), `stele-context-mcp` (MCP stdio server)
 When using Stele Context's MCP tools during refactoring:
 
 ### Before bulk edits
-- `stele-context search "<symbol>"` to find all chunks that reference a name before removing/renaming it
+- `stele-context agent_grep "<pattern>"` for LLM-optimized search with scope, classification, and token budget — preferred over search/search_text for agent workflows
+- `stele-context search "<symbol>"` for semantic/keyword search across chunks
 - `stele-context find_references "<symbol>"` for definition/reference graph lookups
 - `stele-context get_context` to read current file content from the index
 
