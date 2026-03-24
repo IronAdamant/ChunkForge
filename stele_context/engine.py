@@ -182,10 +182,18 @@ class Stele:
         force_reindex: bool = False,
         agent_id: str | None = None,
         expected_versions: dict[str, int] | None = None,
+        summaries: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Index documents through modality-specific chunkers."""
+        """Index documents through modality-specific chunkers.
+
+        Args:
+            summaries: Optional mapping of file path to semantic summary.
+                When provided, all chunks from a file receive the summary
+                as an agent-supplied signature (Tier 2), improving search
+                relevance. Applied in the same write lock as indexing.
+        """
         with self._lock.write_lock():
-            return _ix.index_documents_unlocked(
+            result = _ix.index_documents_unlocked(
                 paths,
                 force_reindex,
                 agent_id,
@@ -213,6 +221,42 @@ class Stele:
                 save_bm25=self._save_bm25,
                 coordination=self._coordination,
             )
+            if summaries:
+                if result["indexed"]:
+                    self._apply_inline_summaries(summaries, result)
+                else:
+                    result["summaries_applied"] = 0
+            return result
+
+    def _apply_inline_summaries(
+        self, summaries: dict[str, str], result: dict[str, Any]
+    ) -> None:
+        """Apply document-level summaries to all chunks of indexed files.
+
+        Called inside the write lock after index_documents_unlocked.
+        """
+        from stele_context.chunkers.numpy_compat import sig_to_list
+
+        normalized = {self._normalize_path(k): v for k, v in summaries.items()}
+        applied = 0
+        for doc_info in result["indexed"]:
+            doc_path = doc_info["path"]
+            summary_text = normalized.get(doc_path)
+            if not summary_text:
+                continue
+            sig = _se._text_signature(summary_text)
+            chunks = self.storage.get_document_chunks(doc_path)
+            chunk_ids = [c["chunk_id"] for c in chunks]
+            if not chunk_ids:
+                continue
+            self.storage.bulk_update_summaries(chunk_ids, summary_text, sig)
+            for cid in chunk_ids:
+                self.vector_index.remove_chunk(cid)
+                self.vector_index.add_chunk(cid, sig_to_list(sig))
+            applied += len(chunk_ids)
+        if applied:
+            self._save_index()
+        result["summaries_applied"] = applied
 
     def remove_document(
         self, document_path: str, agent_id: str | None = None
@@ -392,6 +436,18 @@ class Stele:
         with self._lock.write_lock():
             return _se.store_embedding_unlocked(
                 chunk_id, vector, self.storage, self.vector_index, self._save_index
+            )
+
+    def bulk_store_summaries(self, summaries: dict[str, str]) -> dict[str, Any]:
+        """Batch-store per-chunk semantic summaries.
+
+        Args:
+            summaries: Mapping of chunk_id to semantic summary text.
+                Each chunk gets its own signature computed from its summary.
+        """
+        with self._lock.write_lock():
+            return _se.bulk_store_summaries_unlocked(
+                summaries, self.storage, self.vector_index, self._save_index
             )
 
     # -- Change detection (delegated to stele_context.change_detection) ----------------

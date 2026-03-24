@@ -368,6 +368,33 @@ def store_semantic_summary_unlocked(
     return {"stored": True, "chunk_id": chunk_id}
 
 
+def bulk_store_summaries_unlocked(
+    summaries: dict[str, str],
+    storage: Any,
+    vector_index: Any,
+    save_index: Any,
+) -> dict[str, Any]:
+    """Batch-store per-chunk semantic summaries, update HNSW index.
+
+    Args:
+        summaries: Mapping of chunk_id to semantic summary text.
+    """
+    stored = 0
+    errors: list[str] = []
+    for chunk_id, summary in summaries.items():
+        sig = _text_signature(summary)
+        ok = storage.store_semantic_summary(chunk_id, summary, sig)
+        if ok:
+            vector_index.remove_chunk(chunk_id)
+            vector_index.add_chunk(chunk_id, sig)
+            stored += 1
+        else:
+            errors.append(chunk_id)
+    if stored:
+        save_index()
+    return {"stored": stored, "errors": errors, "total": len(summaries)}
+
+
 def store_embedding_unlocked(
     chunk_id: str,
     vector: list[float],

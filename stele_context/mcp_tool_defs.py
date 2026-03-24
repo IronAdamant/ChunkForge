@@ -19,7 +19,9 @@ from stele_context.mcp_tool_defs_ext import TOOL_DEFINITIONS_EXT
 _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
     {
         "name": "index",
-        "description": "Index documents for semantic chunking and caching",
+        "description": "Index documents for semantic chunking and caching. "
+        "Optionally accepts per-file semantic summaries to improve search "
+        "quality in a single pass (Tier 2 agent signatures).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -32,6 +34,14 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
                     "type": "boolean",
                     "description": "Force re-indexing even if unchanged",
                     "default": False,
+                },
+                "summaries": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                    "description": "Optional mapping of file path to semantic summary. "
+                    "All chunks from a file receive the summary as an agent signature, "
+                    "improving search relevance. Example: "
+                    '{"src/auth.py": "JWT middleware that validates tokens"}',
                 },
             },
             "required": ["paths"],

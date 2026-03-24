@@ -269,6 +269,24 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "bulk_store_summaries",
+        "description": "Batch-store per-chunk semantic summaries -- "
+        "each chunk gets its own agent signature computed from its summary. "
+        "Use after indexing when you have per-chunk descriptions.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "summaries": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                    "description": "Mapping of chunk_id to semantic summary text. "
+                    'Example: {"chunk_abc123": "Database connection pool with retry logic"}',
+                },
+            },
+            "required": ["summaries"],
+        },
+    },
+    {
         "name": "store_embedding",
         "description": "Store a raw embedding vector for a chunk -- for agents with embedding API access",
         "inputSchema": {

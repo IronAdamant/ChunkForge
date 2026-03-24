@@ -26,6 +26,7 @@ WRITE_TOOLS = frozenset(
         "save_kv_state",
         "store_semantic_summary",
         "store_embedding",
+        "bulk_store_summaries",
         "acquire_document_lock",
         "release_document_lock",
         "refresh_document_lock",
@@ -98,6 +99,7 @@ def build_tool_map(
         # Embeddings
         "store_semantic_summary": engine.store_semantic_summary,
         "store_embedding": engine.store_embedding,
+        "bulk_store_summaries": engine.bulk_store_summaries,
         # Chunk history
         "get_chunk_history": engine.get_chunk_history,
         # Text pattern search (perfect recall)

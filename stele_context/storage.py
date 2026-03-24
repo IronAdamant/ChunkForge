@@ -371,6 +371,22 @@ class StorageBackend(StorageDelegatesMixin):
             )
             return cursor.rowcount > 0
 
+    def bulk_update_summaries(
+        self,
+        chunk_ids: list[str],
+        summary: str,
+        agent_signature: Any,
+    ) -> int:
+        """Batch-update semantic_summary and agent_signature for multiple chunks."""
+        sig_bytes = sig_to_bytes(agent_signature)
+        with connect(self.db_path) as conn:
+            conn.executemany(
+                "UPDATE chunks SET semantic_summary = ?, agent_signature = ? "
+                "WHERE chunk_id = ?",
+                [(summary, sig_bytes, cid) for cid in chunk_ids],
+            )
+            return len(chunk_ids)
+
     def store_agent_signature(
         self,
         chunk_id: str,
