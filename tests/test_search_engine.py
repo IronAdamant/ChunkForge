@@ -14,17 +14,16 @@ from stele_context.search_engine import (
 class TestComputeSearchAlpha:
     """Tests for alpha auto-tuning based on query characteristics."""
 
-    def test_plain_english_keeps_base_alpha(self):
-        """Prose queries (no code signals) keep base alpha so HNSW can complement BM25.
+    def test_plain_english_lowers_alpha(self):
+        """Prose queries (no code signals) lower alpha so BM25 dominates.
 
-        The statistical HNSW signal does not understand semantics, but it can
-        still surface structurally similar chunks.  For natural-language queries
-        we keep base_alpha so both signals contribute.  Code-like queries are
-        the ones that need alpha reduced to favor BM25 keyword matching.
+        HNSW statistical fingerprints weight structural boilerplate (route
+        handlers, test scaffolding) equally with content.  For natural-language
+        domain queries, BM25 keyword matching should dominate to avoid noise.
         """
         base = 0.7
         result = compute_search_alpha("how do I handle authentication", base)
-        assert result == base
+        assert result == base - 0.35  # 0.35 for base=0.7
 
     def test_underscore_lowers_alpha(self):
         """A query with an underscore is a code signal; alpha should drop."""
@@ -83,11 +82,11 @@ class TestComputeSearchAlpha:
         assert result < base
 
     def test_trailing_dot_is_plain_english(self):
-        """A query ending with a period (sentence) has no code signals; keeps base alpha."""
+        """A query ending with a period (sentence) has no code signals; lowers alpha."""
         base = 0.7
         # "the end." — ends with dot so dot condition is False; no other signals → plain NL
         result = compute_search_alpha("the end.", base)
-        assert result == base
+        assert result == base - 0.35
 
 
 class TestExtractQueryIdentifiers:

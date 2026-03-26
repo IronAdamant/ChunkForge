@@ -75,8 +75,8 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
                 },
                 "compact": {
                     "type": "boolean",
-                    "description": "If true, return per-file summaries (path, chunk_count, depth range) instead of full chunk list",
-                    "default": False,
+                    "description": "If true, return per-file summaries (path, chunk_count, depth range) instead of full chunk list (default: true)",
+                    "default": True,
                 },
                 "include_content": {
                     "type": "boolean",

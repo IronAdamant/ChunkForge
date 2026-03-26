@@ -104,9 +104,10 @@ def compute_search_alpha(query: str, base_alpha: float) -> float:
     if signals >= 1:
         # Moderate code signals: slightly favor BM25.
         return max(0.3, base_alpha - 0.15)
-    # Natural-language: keep base_alpha so HNSW can complement BM25.
-    # For pure keyword queries (no semantic intent), BM25 dominates.
-    return base_alpha
+    # Natural-language: HNSW structural fingerprints weight code patterns
+    # (boilerplate, route handlers, test scaffolding) equally with content.
+    # Lower alpha so BM25 keyword matching dominates for domain queries.
+    return max(0.15, base_alpha - 0.35)
 
 
 def ensure_bm25(

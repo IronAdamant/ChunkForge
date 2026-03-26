@@ -225,8 +225,8 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
                 },
                 "scan_new": {
                     "type": "boolean",
-                    "description": "When true and document_paths is omitted, scan project root for new files matching chunker extensions not yet in the index; reported under new with reason New file (scan)",
-                    "default": False,
+                    "description": "When true and document_paths is omitted, scan project root for new files matching chunker extensions not yet in the index; reported under new with reason New file (scan) (default: true)",
+                    "default": True,
                 },
             },
             "required": ["session_id"],

@@ -557,7 +557,7 @@ class Stele:
         reason: str | None = None,
         agent_id: str | None = None,
         *,
-        scan_new: bool = False,
+        scan_new: bool = True,
     ) -> dict[str, Any]:
         with self._lock.write_lock():
             return _cd.detect_changes_unlocked(
@@ -663,7 +663,7 @@ class Stele:
         depth: int = 2,
         document_path: str | None = None,
         *,
-        compact: bool = False,
+        compact: bool = True,
         include_content: bool = True,
         path_filter: str | None = None,
     ) -> dict[str, Any]:
