@@ -73,7 +73,7 @@ class TestHTTPServer:
             assert "register_dynamic_symbols" in tool_names
             assert "remove_dynamic_symbols" in tool_names
             assert "get_dynamic_symbols" in tool_names
-            assert len(tool_names) == 49
+            assert len(tool_names) == 53
         finally:
             server.stop()
 

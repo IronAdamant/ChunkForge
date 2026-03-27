@@ -2,6 +2,12 @@
 
 Chronological record of development activity on Stele Context, maintained for LLM agent context.
 
+## 2026-03-27 - v1.0.4 Agent orientation and bounded retrieval
+
+- **`AGENTS.md`**, **`docs/philosophy.md`**, **`docs/agent-workflow.md`** — parity docs for LLM-first workflows (session vs index, Tier 2 bootstrap, trust).
+- **`agent_response.py`**, **`doctor`**, **`project_brief`**, compact **`search`**/**`map`**/**`stats`**, **`get_context`** trust + **`chunks.agent_notes`**; MCP tool count **53**; CLI **`doctor`**, **`project-brief`**.
+- **CHANGELOG [1.0.4]**, README, COMPLETE_PROJECT_DOCUMENTATION, wiki `spec-project.md`, CLAUDE.md updated for release parity.
+
 ## 2026-03-27 - v1.0.3 Agent UX and index diagnostics
 
 - **index_health** module, `map`/`stats` alerts and `project_root`; hybrid search tuning; `search_mode=keyword`; symbol `guidance`; CI `search-regression` job; `pyproject.toml` version synced with `__version__` for PyPI.

@@ -412,6 +412,31 @@ class StorageBackend(StorageDelegatesMixin):
             )
             return cursor.rowcount > 0
 
+    def store_chunk_agent_notes(self, chunk_id: str, notes: str | None) -> bool:
+        """Store optional JSON or plain-text notes on a chunk (agent scratchpad)."""
+        with connect(self.db_path) as conn:
+            cur = conn.execute(
+                "UPDATE chunks SET agent_notes = ? WHERE chunk_id = ?",
+                (notes, chunk_id),
+            )
+            return cur.rowcount > 0
+
+    def bulk_store_chunk_agent_notes(self, notes: dict[str, str]) -> dict[str, Any]:
+        """Batch-set ``agent_notes`` for multiple chunk IDs."""
+        stored = 0
+        errors: list[str] = []
+        with connect(self.db_path) as conn:
+            for cid, text in notes.items():
+                cur = conn.execute(
+                    "UPDATE chunks SET agent_notes = ? WHERE chunk_id = ?",
+                    (text, cid),
+                )
+                if cur.rowcount:
+                    stored += 1
+                else:
+                    errors.append(cid)
+        return {"stored": stored, "errors": errors, "total": len(notes)}
+
     def create_memory_chunk(
         self,
         chunk_id: str,

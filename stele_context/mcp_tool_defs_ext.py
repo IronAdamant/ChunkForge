@@ -464,6 +464,38 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "store_chunk_agent_notes",
+        "description": "Attach JSON or text notes to a chunk (facts, invariants, decisions). "
+        "Stored in SQLite; surfaced in get_context. Does not replace Tier 2 summaries. "
+        "USE WHEN: persisting agent scratchpad tied to a specific chunk.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "chunk_id": {"type": "string"},
+                "notes": {
+                    "type": "string",
+                    "description": "JSON string or plain text (null clears).",
+                },
+            },
+            "required": ["chunk_id"],
+        },
+    },
+    {
+        "name": "bulk_store_chunk_agent_notes",
+        "description": "Batch-set agent_notes for many chunk IDs.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "notes": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                    "description": "chunk_id -> notes string",
+                },
+            },
+            "required": ["notes"],
+        },
+    },
+    {
         "name": "store_embedding",
         "description": "Store a raw embedding vector for a chunk — for agents with "
         "embedding API access",

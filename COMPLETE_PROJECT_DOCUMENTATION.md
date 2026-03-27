@@ -1,5 +1,16 @@
 # Stele Context - Complete Project Documentation
 
+**Last updated:** 2026-03-27 · **Release:** v1.0.4
+
+## Documentation (root)
+
+| Path | Purpose |
+|------|---------|
+| `AGENTS.md` | Short agent entry: orientation tools, session vs index, trust, Tier 2 vs chunk notes |
+| `docs/philosophy.md` | Design philosophy: zero deps, Tier 1 vs Tier 2, LLM-as-embedder, cross-session retrieval, comparison by design |
+| `docs/agent-workflow.md` | Agent-oriented workflow: index → enrich → retrieve, tool choice, Tier 2 APIs, sessions |
+| `stele_context/agent_response.py` | Token-bounded search/map/stats helpers, `project_brief` builder, chunk content trim |
+
 ## File Table
 
 | Path | Purpose | Internal Deps | Tests |
@@ -9,7 +20,7 @@
 | `stele_context/engine.py` | Main orchestrator, thin `Stele` facade class | indexing, search_engine, change_detection, engine_utils, config, rwlock, session, storage, symbol_graph | test_engine.py |
 | `stele_context/engine_utils.py` | Path normalization, lock routing, env checks | coordination, env_checks | (via test_engine.py, test_worktree_safety.py) |
 | `stele_context/indexing.py` | Document indexing: chunk, store, merge, expand | chunkers.base, chunkers.numpy_compat | test_engine.py |
-| `stele_context/search_engine.py` | Hybrid search (HNSW+BM25), get_context, stats | bm25, index, index_store, chunkers | test_engine.py, test_search_engine.py |
+| `stele_context/search_engine.py` | Hybrid search (HNSW+BM25), get_context, map/stats, project_brief, search bounds | bm25, index, index_store, agent_response, chunkers | test_engine.py, test_search_engine.py |
 | `stele_context/index_health.py` | `compute_index_health_snapshot()` — alerts, staleness for map/stats | None | test_index_health.py |
 | `stele_context/change_detection.py` | Detect file changes, re-index modified chunks | chunkers.base, chunkers.numpy_compat | test_engine.py |
 | `stele_context/config.py` | `.stele-context.toml` loader with minimal TOML parser | None | test_config.py |
@@ -48,12 +59,12 @@
 | `stele_context/chunkers/video.py` | `VideoChunker` - OpenCV-based (optional) | chunkers.base | (requires opencv) |
 | `stele_context/cli.py` | CLI entry point (`stele-context` command) | engine | (manual testing) |
 | `stele_context/cli_metadata.py` | CLI metadata/annotation subcommands | engine | (manual testing) |
-| `stele_context/mcp_server.py` | HTTP REST server (42 tools, threaded) + tool dispatch | tool_registry | test_mcp_server.py |
+| `stele_context/mcp_server.py` | HTTP REST server (unified tool registry, threaded) + tool dispatch | tool_registry | test_mcp_server.py |
 | `stele_context/mcp_handlers.py` | Backward-compat shim (re-exports from mcp_server) | mcp_server, tool_registry | test_mcp_server.py |
 | `stele_context/tool_registry.py` | Unified tool dispatch, WRITE_TOOLS, HTTP schemas, modality flags | mcp_tool_defs | (via test_mcp_server.py, test_mcp_stdio.py) |
 | `stele_context/mcp_stdio.py` | MCP stdio server (JSON-RPC for Claude Desktop) | mcp_tool_defs, tool_registry | test_mcp_stdio.py |
-| `stele_context/mcp_tool_defs.py` | MCP stdio tool definitions (core, 15 tools) | mcp_tool_defs_ext | (via test_mcp_stdio.py) |
-| `stele_context/mcp_tool_defs_ext.py` | MCP stdio tool definitions (extended, 20 tools) | None | (via test_mcp_stdio.py) |
+| `stele_context/mcp_tool_defs.py` | MCP tool definitions (core; combined with ext = 53 tools) | mcp_tool_defs_ext | (via test_mcp_stdio.py) |
+| `stele_context/mcp_tool_defs_ext.py` | MCP tool definitions (extended) | None | (via test_mcp_stdio.py) |
 
 ## Test Files
 
@@ -89,7 +100,8 @@
 | `tests/test_search_engine.py` | Search alpha tuning, identifier extraction, signatures | ~30 |
 | `tests/test_index_health.py` | Index health snapshot, alerts | ~4 |
 | `tests/test_search_regression.py` | Keyword/hybrid regression (`@search_regression`) | ~4 |
+| `tests/test_agent_response.py` | Token bounds, compact map, project_brief helper | ~4 |
 | `tests/test_connection_pool.py` | Thread-local pool, connect() context manager, search_text edges | ~40 |
 | `tests/test_media_chunkers.py` | Media chunker extensions, HAS_* flags, modality detection | ~30 |
 
-**Total: 850+ tests (1 skipped without MCP SDK)**
+**Total: 860+ tests (1 skipped without MCP SDK)**

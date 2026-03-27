@@ -9,8 +9,8 @@ Stele Context is a local context cache for LLM agents. It indexes documents thro
 ```
 API Layer
   CLI (cli.py)              -- stele-context index / search / serve
-  HTTP REST (mcp_server.py) -- 42 tools, threaded
-  MCP stdio (mcp_stdio.py)  -- 42 tools, JSON-RPC
+  HTTP REST (mcp_server.py) -- unified tool registry, threaded
+  MCP stdio (mcp_stdio.py)  -- unified tool registry, JSON-RPC
 
 Engine Layer (engine.py - thin facade)
   indexing.py       -- document indexing, chunk merging
@@ -47,7 +47,13 @@ API Layer
   mcp_tool_defs_ext.py -- MCP tool definitions (extended)
   mcp_handlers.py     -- backward-compat shim
 
+Agent docs (repo root)
+  AGENTS.md            -- quick entry for LLM agents (doctor, trust, Tier 2)
+  docs/philosophy.md   -- design: zero deps, Tier 1 vs Tier 2
+  docs/agent-workflow.md -- index → enrich → retrieve
+
 Cross-cutting
+  agent_response.py    -- token-bounded search/map/stats, project_brief data
   config.py            -- .stele-context.toml loader
   rwlock.py            -- read-write lock
   coordination.py      -- cross-worktree coordination

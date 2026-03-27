@@ -354,9 +354,20 @@ class Stele:
         with self._lock.write_lock():
             return {"pruned": self.storage.prune_history(max_age_seconds, max_entries)}
 
-    def get_map(self) -> dict[str, Any]:
+    def get_map(
+        self,
+        *,
+        compact: bool = False,
+        max_documents: int | None = None,
+        max_annotation_chars: int = 200,
+    ) -> dict[str, Any]:
         with self._lock.read_lock():
-            data = _se.get_map_unlocked(self.storage)
+            data = _se.get_map_unlocked(
+                self.storage,
+                compact=compact,
+                max_documents=max_documents,
+                max_annotation_chars=max_annotation_chars,
+            )
         data["project_root"] = (
             str(self._project_root) if self._project_root is not None else None
         )
@@ -389,12 +400,13 @@ class Stele:
         "search_alpha",
     )
 
-    def get_stats(self) -> dict[str, Any]:
+    def get_stats(self, *, compact: bool = False) -> dict[str, Any]:
         with self._lock.read_lock():
             data = _se.get_stats_unlocked(
                 self.storage,
                 self.vector_index,
                 {k: getattr(self, k) for k in self._STAT_KEYS},
+                compact=compact,
             )
         data["project_root"] = (
             str(self._project_root) if self._project_root is not None else None
@@ -605,7 +617,10 @@ class Stele:
         top_k: int = 10,
         *,
         search_mode: str = "hybrid",
-    ) -> list[dict[str, Any]]:
+        max_result_tokens: int | None = None,
+        compact: bool = False,
+        return_response_meta: bool = False,
+    ) -> list[dict[str, Any]] | dict[str, Any]:
         with self._lock.read_lock():
             return _se.search_unlocked(
                 query,
@@ -617,9 +632,18 @@ class Stele:
                 symbol_manager=self.symbol_manager,
                 do_ensure_bm25=self._ensure_bm25,
                 search_mode=search_mode,
+                max_result_tokens=max_result_tokens,
+                compact=compact,
+                return_response_meta=return_response_meta,
             )
 
-    def get_context(self, document_paths: list[str]) -> dict[str, Any]:
+    def get_context(
+        self,
+        document_paths: list[str],
+        *,
+        include_trust: bool = True,
+        max_chunk_content_tokens: int | None = None,
+    ) -> dict[str, Any]:
         with self._lock.read_lock():
             return _se.get_context_unlocked(
                 document_paths,
@@ -628,7 +652,62 @@ class Stele:
                 detect_modality=self.detect_modality,
                 read_and_hash=_read_and_hash,
                 storage=self.storage,
+                include_trust=include_trust,
+                max_chunk_content_tokens=max_chunk_content_tokens,
             )
+
+    def get_project_brief(self, top_n: int = 40) -> dict[str, Any]:
+        with self._lock.read_lock():
+            data = _se.get_project_brief_unlocked(self.storage, top_n=top_n)
+        data["project_root"] = (
+            str(self._project_root) if self._project_root is not None else None
+        )
+        return data
+
+    def doctor_snapshot(self) -> dict[str, Any]:
+        """One-screen orientation: version, storage, health, env issues, map preview."""
+        import sys
+
+        with self._lock.read_lock():
+            stats = _se.get_stats_unlocked(
+                self.storage,
+                self.vector_index,
+                {k: getattr(self, k) for k in self._STAT_KEYS},
+                compact=True,
+            )
+            m = _se.get_map_unlocked(
+                self.storage,
+                compact=True,
+                max_documents=8,
+                max_annotation_chars=120,
+            )
+        env = self.check_environment()
+        stats["project_root"] = (
+            str(self._project_root) if self._project_root is not None else None
+        )
+        m["project_root"] = stats["project_root"]
+        return {
+            "stele_version": stats.get("version"),
+            "python": sys.version.split()[0],
+            "project_root": stats["project_root"],
+            "storage_dir": (stats.get("storage") or {}).get("storage_dir"),
+            "document_count": (stats.get("storage") or {}).get("document_count"),
+            "chunk_count": (stats.get("storage") or {}).get("chunk_count"),
+            "index_health": stats.get("index_health"),
+            "environment": env,
+            "map_preview": m,
+        }
+
+    def store_chunk_agent_notes(
+        self, chunk_id: str, notes: str | None
+    ) -> dict[str, Any]:
+        with self._lock.write_lock():
+            ok = self.storage.store_chunk_agent_notes(chunk_id, notes)
+            return {"stored": ok, "chunk_id": chunk_id}
+
+    def bulk_store_chunk_agent_notes(self, notes: dict[str, str]) -> dict[str, Any]:
+        with self._lock.write_lock():
+            return self.storage.bulk_store_chunk_agent_notes(notes)
 
     # -- Session ops (delegated to SessionManager) ----------------------------
 

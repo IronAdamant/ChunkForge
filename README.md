@@ -10,6 +10,8 @@
 
 Stele Context helps LLM agents avoid re-reading unchanged files by caching chunk data with semantic search. Documents are routed through modality-specific chunkers, chunk content is stored in SQLite, and an HNSW vector index enables fast O(log n) retrieval. Only modified chunks trigger reprocessing.
 
+**For LLM agents:** Stele is built so you can **index a codebase once**, optionally **enrich** chunks with your own summaries or vectors (no bundled model), then **retrieve** across later sessions from persistent storage. Read [AGENTS.md](AGENTS.md), [Design philosophy](docs/philosophy.md), and [Agent workflow](docs/agent-workflow.md).
+
 ![Semantic search demo](docs/semantic-search-demo.png)
 
 ## Key Features
@@ -19,7 +21,8 @@ Stele Context helps LLM agents avoid re-reading unchanged files by caching chunk
 - **Multi-Modal Support**: Text, code, images, PDFs, audio, and video (optional dependencies)
 - **HNSW Vector Index**: O(log n) semantic search across all indexed chunks
 - **Hybrid Search**: HNSW cosine similarity + BM25 keyword matching, auto-tuned blending; optional **`search_mode=keyword`** for BM25-only (deterministic keyword ranking)
-- **Index health**: `map` and `stats` expose **`index_health`** (counts, staleness, **`alerts`**, **`project_root`**) — see [CHANGELOG](CHANGELOG.md) for 1.0.3
+- **Index health**: `map` and `stats` expose **`index_health`** (counts, staleness, **`alerts`**, **`project_root`**) — see [CHANGELOG](CHANGELOG.md) for 1.0.4
+- **Agent orientation**: **`doctor`** / **`project_brief`** (MCP + CLI), bounded **`search`**/**`map`**/**`stats`**, **`get_context`** trust + **`agent_notes`**; see [AGENTS.md](AGENTS.md)
 - **Tree-Sitter Chunking**: AST-aware code chunking for 9 languages (optional, falls back to regex)
 - **Symbol Graph**: Cross-file reference tracking — `find_references`, `find_definition`, `impact_radius`
 - **Multi-Agent Safe**: Per-document locking, optimistic versioning, cross-worktree coordination
@@ -33,8 +36,8 @@ Stele Context helps LLM agents avoid re-reading unchanged files by caching chunk
 graph TB
     subgraph API["API Layer"]
         CLI["CLI<br/>stele-context index / search / serve"]
-        HTTP["HTTP REST<br/>42 tools, threaded"]
-        MCP["MCP stdio<br/>42 tools, JSON-RPC"]
+        HTTP["HTTP REST<br/>unified tool registry, threaded"]
+        MCP["MCP stdio<br/>unified tool registry, JSON-RPC"]
     end
 
     subgraph Engine["Engine (engine.py)"]
@@ -72,17 +75,15 @@ graph TB
 
 ## Comparison
 
-| Feature | Stele Context | LangChain | LlamaIndex | EverMemOS |
-|---------|-------|-----------|------------|-----------|
-| Zero dependencies | Yes | No (50+) | No (30+) | No (Mongo, Redis, Milvus) |
-| 100% offline | Yes | No | No | No |
-| No model downloads | Yes | No | No | No |
-| Multi-modal | 6 modalities | Text-focused | Text-focused | Text only |
-| Code-aware chunking | AST + tree-sitter | Basic splitting | Basic splitting | No |
-| Symbol graph | 12 languages | No | No | No |
-| Multi-agent safety | Locks + versioning | No | No | Yes |
-| MCP server | Native | Plugin | Plugin | Planned |
-| Storage | SQLite (embedded) | Vector DB (external) | Vector DB (external) | MongoDB + Milvus |
+Stele targets **offline, zero-core-dependency** agent memory for a **local codebase**; other stacks often assume cloud APIs or large dependency trees. A durable **design-dimensions** view (and why Tier 2 is agent-driven) is in [docs/philosophy.md](docs/philosophy.md#comparison-by-design-not-by-vendor).
+
+| Dimension | Stele Context |
+|-----------|----------------|
+| Core runtime dependencies | Zero (stdlib only) |
+| Network / cloud required | No |
+| Who supplies “semantic” embeddings | Optional: **you** (summaries / vectors) or built-in Tier 1 stats only |
+| Primary storage | SQLite + on-disk indices (project-local) |
+| MCP / tool surface | Native CLI + HTTP + MCP |
 
 ## Installation
 
@@ -289,9 +290,9 @@ The agent IS the embedding model. Stele Context just stores and indexes what the
 
 ## MCP Tools
 
-### Both Servers (42 tools each)
+### Both servers (unified registry)
 
-Both the HTTP REST server and MCP stdio server expose all 42 tools via a unified registry.
+The HTTP REST server and MCP stdio server expose the **same tool set** via `tool_registry.py` (see `stele-context doctor` / MCP `doctor` for a live-oriented snapshot).
 
 | Category | Tools |
 |----------|-------|
@@ -489,7 +490,7 @@ The package has **no runtime dependencies** (`dependencies = []`); optional extr
 
 ```bash
 pip install -e ".[dev]"
-pytest                              # 850+ tests
+pytest                              # 860+ tests
 pytest --cov=stele_context           # With coverage
 python benchmarks/run_all.py        # Performance benchmarks
 mypy stele_context/                 # Type checking

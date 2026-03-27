@@ -153,6 +153,22 @@ Examples:
         help="hybrid = HNSW+BM25 (default); keyword = BM25 keyword search only",
     )
     search_parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="Short content previews instead of full chunk text",
+    )
+    search_parser.add_argument(
+        "--max-result-tokens",
+        type=int,
+        default=None,
+        help="Cap total estimated tokens across results",
+    )
+    search_parser.add_argument(
+        "--meta",
+        action="store_true",
+        help="Include truncation meta in JSON output",
+    )
+    search_parser.add_argument(
         "--json",
         action="store_true",
         dest="output_json",
@@ -271,9 +287,14 @@ Examples:
     )
 
     # stats command
-    subparsers.add_parser(
+    stats_parser = subparsers.add_parser(
         "stats",
         help="Show storage statistics",
+    )
+    stats_parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="Smaller JSON-friendly output",
     )
 
     # clear command
@@ -388,6 +409,41 @@ Examples:
         help="Show project map: documents, chunks, annotations",
     )
     map_parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="Sort by size, limit documents, shorten annotations",
+    )
+    map_parser.add_argument(
+        "--max-documents",
+        type=int,
+        default=None,
+        help="With --compact, max documents to list",
+    )
+    map_parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="output_json",
+        help="Output as JSON",
+    )
+
+    # doctor command
+    subparsers.add_parser(
+        "doctor",
+        help="One-screen health: version, storage, index, env issues, map preview",
+    )
+
+    # project-brief command
+    pb_parser = subparsers.add_parser(
+        "project-brief",
+        help="Largest files by tokens, extension counts, totals (agent orientation)",
+    )
+    pb_parser.add_argument(
+        "--top-n",
+        type=int,
+        default=40,
+        help="Max files in largest_files (default 40)",
+    )
+    pb_parser.add_argument(
         "--json",
         action="store_true",
         dest="output_json",
@@ -582,14 +638,37 @@ def cmd_agent_grep(args: argparse.Namespace, stele: Stele) -> int:
 
 def cmd_search(args: argparse.Namespace, stele: Stele) -> int:
     """Semantic search across indexed chunks."""
-    results = stele.search(
+    want_meta = bool(
+        getattr(args, "meta", False)
+        or getattr(args, "compact", False)
+        or getattr(args, "max_result_tokens", None) is not None
+    )
+    raw = stele.search(
         query=args.query,
         top_k=args.top_k,
         search_mode=getattr(args, "search_mode", "hybrid"),
+        max_result_tokens=getattr(args, "max_result_tokens", None),
+        compact=getattr(args, "compact", False),
+        return_response_meta=want_meta,
     )
+    if isinstance(raw, dict):
+        results = raw.get("results") or []
+        meta = raw.get("meta")
+    else:
+        results = raw
+        meta = None
 
     if args.output_json:
-        print(json.dumps(results, indent=2, default=str))
+        if want_meta and meta is not None:
+            print(
+                json.dumps(
+                    {"results": results, "meta": meta},
+                    indent=2,
+                    default=str,
+                )
+            )
+        else:
+            print(json.dumps(results, indent=2, default=str))
         return 0
 
     if not results:
@@ -601,7 +680,7 @@ def cmd_search(args: argparse.Namespace, stele: Stele) -> int:
         score = result["relevance_score"]
         path = result["document_path"]
         tokens = result["token_count"]
-        content = result.get("content", "")
+        content = result.get("content") or result.get("content_preview", "")
 
         print(f"  {i}. [{score:.3f}] {path} ({tokens} tokens)")
         if content:
@@ -651,7 +730,11 @@ def cmd_detect(args: argparse.Namespace, stele: Stele) -> int:
 
 def cmd_stats(args: argparse.Namespace, stele: Stele) -> int:
     """Show storage statistics."""
-    stats = stele.get_stats()
+    stats = stele.get_stats(compact=getattr(args, "compact", False))
+
+    if getattr(args, "compact", False):
+        print(json.dumps(stats, indent=2, default=str))
+        return 0
 
     print("Stele Statistics")
     print("=" * 50)
@@ -683,6 +766,23 @@ def cmd_stats(args: argparse.Namespace, stele: Stele) -> int:
     print(f"  Merge threshold: {config['merge_threshold']}")
     print(f"  Change threshold: {config['change_threshold']}")
 
+    return 0
+
+
+def cmd_doctor(_args: argparse.Namespace, stele: Stele) -> int:
+    """Print one-screen health snapshot."""
+    snap = stele.doctor_snapshot()
+    print(json.dumps(snap, indent=2, default=str))
+    return 0
+
+
+def cmd_project_brief(args: argparse.Namespace, stele: Stele) -> int:
+    """Largest files and extension histogram."""
+    data = stele.get_project_brief(top_n=getattr(args, "top_n", 40))
+    if getattr(args, "output_json", False):
+        print(json.dumps(data, indent=2, default=str))
+        return 0
+    print(json.dumps(data, indent=2, default=str))
     return 0
 
 
@@ -744,6 +844,8 @@ def main(argv: list[str] | None = None) -> int:
         "agent-grep": cmd_agent_grep,
         "detect": cmd_detect,
         "stats": cmd_stats,
+        "doctor": cmd_doctor,
+        "project-brief": cmd_project_brief,
         "clear": cmd_clear,
         "annotate": cmd_annotate,
         "get-annotations": cmd_get_annotations,

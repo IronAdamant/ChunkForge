@@ -28,6 +28,8 @@ WRITE_TOOLS = frozenset(
         "store_embedding",
         "llm_embed",
         "bulk_store_summaries",
+        "store_chunk_agent_notes",
+        "bulk_store_chunk_agent_notes",
         "acquire_document_lock",
         "release_document_lock",
         "refresh_document_lock",
@@ -71,6 +73,8 @@ def build_tool_map(
         # History & stats
         "prune_history": engine.prune_history,
         "map": engine.get_map,
+        "project_brief": engine.get_project_brief,
+        "doctor": engine.doctor_snapshot,
         "history": engine.get_history,
         "stats": engine.get_stats,
         # Session
@@ -109,6 +113,8 @@ def build_tool_map(
         "store_embedding": engine.store_embedding,
         "llm_embed": engine.llm_embed,
         "bulk_store_summaries": engine.bulk_store_summaries,
+        "store_chunk_agent_notes": engine.store_chunk_agent_notes,
+        "bulk_store_chunk_agent_notes": engine.bulk_store_chunk_agent_notes,
         # Chunk history
         "get_chunk_history": engine.get_chunk_history,
         # Text pattern search (perfect recall)

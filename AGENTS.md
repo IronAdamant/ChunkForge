@@ -1,0 +1,36 @@
+# Stele Context — agent guide
+
+Stele is a **local, persistent index** of your project: chunks, hybrid search (HNSW + BM25), symbol graph, and optional **Tier 2** semantics **you** supply (summaries or vectors). It does **not** bundle an embedding model.
+
+## Read first
+
+- [docs/philosophy.md](docs/philosophy.md) — why zero core deps, Tier 1 vs Tier 2, cross-session use.
+- [docs/agent-workflow.md](docs/agent-workflow.md) — index → enrich → retrieve, tool choice, Tier 2 bootstrap.
+
+## Session vs project truth
+
+- **Index + `.stele-context/`** = durable **project** memory (survives chats).
+- **Sessions** = optional **thread-local** working sets (attached chunks, KV). Do not rely on sessions alone for facts that must survive the next session — **index and re-use the project cache**.
+
+## Orientation (start here)
+
+1. **`doctor`** — one screen: version, storage, counts, `index_health`, env issues, compact map preview.
+2. **`project_brief`** — largest files by tokens, extension counts, totals.
+3. **`map`** — use `compact=true` for bounded token use.
+4. **`stats`** — use `compact=true` for a small JSON summary.
+
+## Retrieval discipline
+
+- **Symbols** (`find_definition`, `find_references`) for identifiers and imports.
+- **`agent_grep` / `search_text`** for exhaustive or regex proof.
+- **`search`** for exploration; use **`compact`**, **`max_result_tokens`**, or **`return_response_meta`** to cap context.
+- **`get_context`** returns **trust** hints (mtime vs index, staleness) and optional **`agent_notes`** per chunk.
+
+## Tier 2 and chunk notes
+
+- **Tier 2:** `index` with `summaries`, `bulk_store_summaries`, `store_semantic_summary`, `store_embedding` — improves hybrid search.
+- **Chunk notes:** `store_chunk_agent_notes` / `bulk_store_chunk_agent_notes` — JSON or text tied to a `chunk_id` (facts, invariants). Shown in `get_context`; not a substitute for summaries for search vectors.
+
+## Trust
+
+If **`trust.cache_aligned_with_disk`** is false or **`staleness_hint`** is true, treat cached text as potentially stale and prefer **`detect_changes`** + re-index for files you edit.

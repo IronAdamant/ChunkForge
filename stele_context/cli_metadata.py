@@ -90,7 +90,10 @@ def cmd_update_annotation(args: argparse.Namespace, stele: Stele) -> int:
 
 def cmd_map(args: argparse.Namespace, stele: Stele) -> int:
     """Show project map: all documents with chunk counts and annotations."""
-    result = stele.get_map()
+    result = stele.get_map(
+        compact=getattr(args, "compact", False),
+        max_documents=getattr(args, "max_documents", None),
+    )
     if getattr(args, "output_json", False):
         print(json.dumps(result, indent=2, default=str))
         return 0

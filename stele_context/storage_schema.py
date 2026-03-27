@@ -247,3 +247,9 @@ def migrate_database(db_path: Path) -> None:
             "CREATE INDEX IF NOT EXISTS idx_conflicts_time "
             "ON document_conflicts(created_at)"
         )
+
+        # Chunks: optional JSON agent_notes (facts, invariants, LLM scratchpad)
+        cursor = conn.execute("PRAGMA table_info(chunks)")
+        chunk_cols = {row[1] for row in cursor.fetchall()}
+        if "agent_notes" not in chunk_cols:
+            conn.execute("ALTER TABLE chunks ADD COLUMN agent_notes TEXT")

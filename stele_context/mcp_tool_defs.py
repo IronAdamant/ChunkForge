@@ -140,6 +140,21 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
                     "description": "hybrid = HNSW+BM25 (default); keyword = BM25 only",
                     "default": "hybrid",
                 },
+                "max_result_tokens": {
+                    "type": "integer",
+                    "description": "Optional cap on total estimated tokens across "
+                    "result bodies (reduces context overflow).",
+                },
+                "compact": {
+                    "type": "boolean",
+                    "description": "If true, replace full content with short previews.",
+                    "default": False,
+                },
+                "return_response_meta": {
+                    "type": "boolean",
+                    "description": "If true, return {results, meta} with truncation info.",
+                    "default": False,
+                },
             },
             "required": ["query"],
         },
@@ -154,13 +169,55 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
         "checking project scope and size.",
         "inputSchema": {
             "type": "object",
+            "properties": {
+                "compact": {
+                    "type": "boolean",
+                    "description": "Sort by token count, cap document list, shorten annotations.",
+                    "default": False,
+                },
+                "max_documents": {
+                    "type": "integer",
+                    "description": "With compact=true, max documents to return.",
+                },
+                "max_annotation_chars": {
+                    "type": "integer",
+                    "description": "Truncate each annotation content to this many chars.",
+                    "default": 200,
+                },
+            },
+        },
+    },
+    {
+        "name": "project_brief",
+        "description": "Token-efficient orientation: largest files by token count, "
+        "extension histogram, totals, index_health. "
+        "USE WHEN: first pass on a repo before deep search or indexing.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "top_n": {
+                    "type": "integer",
+                    "description": "Max files in largest_files_by_tokens (default 40).",
+                    "default": 40,
+                },
+            },
+        },
+    },
+    {
+        "name": "doctor",
+        "description": "One-screen health snapshot: version, Python, storage paths, "
+        "counts, index_health, environment_check issues, compact map preview. "
+        "USE WHEN: orienting at session start or debugging index/storage.",
+        "inputSchema": {
+            "type": "object",
             "properties": {},
         },
     },
     {
         "name": "get_context",
         "description": "Check cached document state — returns unchanged/changed/new "
-        "categorization per file. "
+        "categorization per file. Unchanged entries may include trust (mtime vs "
+        "index, staleness) and per-chunk agent_notes. "
         "USE WHEN: checking if files need re-indexing before starting work, "
         "reading cached chunk content without re-reading disk.",
         "inputSchema": {
@@ -170,6 +227,15 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Document paths to check",
+                },
+                "include_trust": {
+                    "type": "boolean",
+                    "description": "Include trust/staleness hints (default true).",
+                    "default": True,
+                },
+                "max_chunk_content_tokens": {
+                    "type": "integer",
+                    "description": "Optional per-chunk content trim (estimated tokens).",
                 },
             },
             "required": ["document_paths"],
@@ -444,7 +510,13 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
         "and project_root",
         "inputSchema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "compact": {
+                    "type": "boolean",
+                    "description": "Smaller payload for quick agent orientation.",
+                    "default": False,
+                },
+            },
         },
     },
     # -- Secondary: Session & KV Cache ----------------------------------------

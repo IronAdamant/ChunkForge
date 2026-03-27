@@ -305,7 +305,10 @@ def search_unlocked(
     symbol_manager: Any,
     do_ensure_bm25: Any,
     search_mode: str = "hybrid",
-) -> list[dict[str, Any]]:
+    max_result_tokens: int | None = None,
+    compact: bool = False,
+    return_response_meta: bool = False,
+) -> list[dict[str, Any]] | dict[str, Any]:
     """Hybrid (HNSW+BM25) or keyword-only (BM25) search across chunks."""
     mode = (search_mode or "hybrid").strip().lower()
     if mode not in ("hybrid", "keyword"):
@@ -480,6 +483,17 @@ def search_unlocked(
         results.sort(key=lambda r: r["relevance_score"], reverse=True)
         results = results[:top_k]
 
+    from stele_context.agent_response import truncate_search_results
+
+    if return_response_meta or max_result_tokens is not None or compact:
+        trimmed, meta = truncate_search_results(
+            results,
+            max_result_tokens=max_result_tokens,
+            compact=compact,
+        )
+        if return_response_meta:
+            return {"results": trimmed, "meta": meta}
+        return trimmed
     return results
 
 
@@ -491,8 +505,15 @@ def get_context_unlocked(
     detect_modality: Any,
     read_and_hash: Any,
     storage: Any,
+    include_trust: bool = True,
+    max_chunk_content_tokens: int | None = None,
 ) -> dict[str, Any]:
-    """Core get_context logic."""
+    """Core get_context logic with optional trust hints for LLM calibration."""
+    from stele_context.agent_response import (
+        parse_agent_notes_field,
+        trim_content_to_token_budget,
+    )
+
     document_paths = [normalize_path(p) for p in document_paths]
 
     result: dict[str, Any] = {
@@ -529,35 +550,90 @@ def get_context_unlocked(
             chunks = storage.search_chunks(document_path=doc_path)
             chunk_data = []
             for chunk in chunks:
-                chunk_data.append(
-                    {
-                        "chunk_id": chunk["chunk_id"],
-                        "content": chunk.get("content"),
-                        "start_pos": chunk["start_pos"],
-                        "end_pos": chunk["end_pos"],
-                        "token_count": chunk["token_count"],
-                    }
-                )
-            result["unchanged"].append(
-                {
-                    "path": doc_path,
-                    "chunks": chunk_data,
-                    "total_tokens": sum(c["token_count"] for c in chunk_data),
+                content = chunk.get("content")
+                trunc = False
+                if max_chunk_content_tokens is not None and content:
+                    content, trunc = trim_content_to_token_budget(
+                        content, max_chunk_content_tokens
+                    )
+                row: dict[str, Any] = {
+                    "chunk_id": chunk["chunk_id"],
+                    "content": content,
+                    "start_pos": chunk["start_pos"],
+                    "end_pos": chunk["end_pos"],
+                    "token_count": chunk["token_count"],
+                    "content_truncated": trunc,
                 }
+                ss = chunk.get("staleness_score")
+                if ss is not None:
+                    row["staleness_score"] = float(ss)
+                raw_notes = chunk.get("agent_notes")
+                if raw_notes:
+                    row["agent_notes"] = parse_agent_notes_field(raw_notes)
+                chunk_data.append(row)
+
+            try:
+                st = abs_path.stat()
+                file_mtime = st.st_mtime
+                file_size = st.st_size
+            except OSError:
+                file_mtime = None
+                file_size = None
+
+            max_staleness = max(
+                (float(c.get("staleness_score") or 0.0) for c in chunks),
+                default=0.0,
             )
+
+            entry: dict[str, Any] = {
+                "path": doc_path,
+                "chunks": chunk_data,
+                "total_tokens": sum(c["token_count"] for c in chunk_data),
+            }
+            if include_trust:
+                entry["trust"] = {
+                    "document_indexed_at": stored_doc["indexed_at"],
+                    "stored_last_modified": stored_doc["last_modified"],
+                    "file_mtime": file_mtime,
+                    "file_size": file_size,
+                    "cache_aligned_with_disk": (
+                        file_size is not None
+                        and stored_doc.get("file_size") is not None
+                        and file_mtime == stored_doc["last_modified"]
+                        and file_size == stored_doc["file_size"]
+                    ),
+                    "max_chunk_staleness": max_staleness,
+                    "staleness_hint": max_staleness >= 0.3,
+                }
+            result["unchanged"].append(entry)
         else:
-            result["changed"].append(
-                {
-                    "path": doc_path,
-                    "old_hash": stored_doc["content_hash"][:16],
-                    "new_hash": content_hash[:16],
-                }
-            )
+            chg: dict[str, Any] = {
+                "path": doc_path,
+                "old_hash": stored_doc["content_hash"][:16],
+                "new_hash": content_hash[:16],
+            }
+            if include_trust:
+                try:
+                    st = abs_path.stat()
+                    chg["trust"] = {
+                        "file_mtime": st.st_mtime,
+                        "file_size": st.st_size,
+                        "indexed_cache_outdated": True,
+                    }
+                except OSError:
+                    chg["trust"] = {"indexed_cache_outdated": True}
+            result["changed"].append(chg)
 
     return result
 
 
-def get_map_unlocked(storage: Any) -> dict[str, Any]:
+def get_map_unlocked(
+    storage: Any,
+    *,
+    compact: bool = False,
+    max_documents: int | None = None,
+    max_annotation_chars: int = 200,
+) -> dict[str, Any]:
     """Build project overview: all documents with chunk counts and annotations."""
     documents = storage.get_all_documents()
     result, total_tokens = [], 0
@@ -580,12 +656,28 @@ def get_map_unlocked(storage: Any) -> dict[str, Any]:
                 ],
             }
         )
-    return {
+    data: dict[str, Any] = {
         "documents": result,
         "total_documents": len(result),
         "total_tokens": total_tokens,
         "index_health": storage.get_index_health_snapshot(),
     }
+    if compact:
+        from stele_context.agent_response import compact_map_payload
+
+        data = compact_map_payload(
+            data,
+            max_documents=max_documents,
+            max_annotation_chars=max_annotation_chars,
+        )
+    return data
+
+
+def get_project_brief_unlocked(storage: Any, top_n: int = 40) -> dict[str, Any]:
+    """Token-efficient orientation: largest files, extension counts, totals."""
+    from stele_context.agent_response import build_project_brief
+
+    return build_project_brief(storage, top_n=top_n)
 
 
 def store_semantic_summary_unlocked(
@@ -706,14 +798,25 @@ def init_chunkers(chunk_size: int, max_chunk_size: int) -> dict[str, Any]:
     return chunkers
 
 
-def get_stats_unlocked(storage: Any, vector_index: Any, config: dict) -> dict[str, Any]:
+def get_stats_unlocked(
+    storage: Any,
+    vector_index: Any,
+    config: dict,
+    *,
+    compact: bool = False,
+) -> dict[str, Any]:
     """Build stats dict."""
     from stele_context import __version__
 
-    return {
+    data = {
         "version": __version__,
         "storage": storage.get_storage_stats(),
         "index": vector_index.get_stats(),
         "config": config,
         "index_health": storage.get_index_health_snapshot(),
     }
+    if compact:
+        from stele_context.agent_response import compact_stats_payload
+
+        return compact_stats_payload(data)
+    return data

@@ -5,6 +5,24 @@ All notable changes to Stele Context will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-03-27
+
+### Added
+- **`AGENTS.md`**, **[`docs/philosophy.md`](docs/philosophy.md)**, **[`docs/agent-workflow.md`](docs/agent-workflow.md)** — agent-oriented design, session vs project index, Tier 2 bootstrap, tool choice
+- **`stele_context/agent_response.py`** — token-bounded `search`/`map`/`stats` helpers, `project_brief` builder, chunk content trimming
+- **`Stele.doctor_snapshot()`** / MCP+CLI **`doctor`** — one-screen health: version, Python, storage, counts, `index_health`, `environment_check`, compact map preview
+- **`Stele.get_project_brief()`** / MCP+CLI **`project-brief`** — largest files by tokens, extension histogram, totals
+- **`Stele.search(...)`** — `max_result_tokens`, `compact`, `return_response_meta` for bounded agent context
+- **`Stele.get_map` / `get_stats`** — `compact` and map limits (`max_documents`, `max_annotation_chars`)
+- **`Stele.get_context`** — `include_trust`, `max_chunk_content_tokens`; **trust** hints (mtime vs index, staleness); **`agent_notes`** on chunks (JSON or text)
+- **SQLite `chunks.agent_notes`** — `store_chunk_agent_notes`, `bulk_store_chunk_agent_notes` (MCP + engine)
+- **CLI**: `doctor`, `project-brief`, `search --compact|--max-result-tokens|--meta`, `stats --compact`, `map --compact|--max-documents`
+- **MCP tools** — `doctor`, `project_brief`, chunk-notes tools; extended schemas for `search`, `map`, `stats`, `get_context` (53 tools total)
+- **Tests** — `tests/test_agent_response.py`
+
+### Documentation
+- README, COMPLETE_PROJECT_DOCUMENTATION, wiki, CLAUDE.md aligned with agent UX and current tool/registry counts
+
 ## [1.0.3] - 2026-03-27
 
 ### Added
