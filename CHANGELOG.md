@@ -5,6 +5,11 @@ All notable changes to Stele Context will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-03-27
+
+### Fixed
+- **`index_store._save_compressed_json`** — On **Windows** (no `fcntl`), concurrent index saves now use **`msvcrt.locking`** on the sidecar lock file and **retries** for **`os.replace`** on `PermissionError` (WinError 5), matching Unix cross-process safety. Fixes `test_concurrent_saves_no_corruption` on `windows-latest` CI.
+
 ## [1.0.5] - 2026-03-27
 
 ### Added

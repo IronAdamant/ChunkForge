@@ -2,6 +2,10 @@
 
 Chronological record of development activity on Stele Context, maintained for LLM agent context.
 
+## 2026-03-27 - v1.0.6 Windows index save locking
+
+- **`index_store`**: `msvcrt.locking` + `os.replace` retries when `fcntl` unavailable — fixes concurrent save test on Windows CI.
+
 ## 2026-03-27 - v1.0.5 RecipeLab findings parity (zero-dep)
 
 - **search_engine / engine**: weak raw HNSW cosine → BM25 fallback; **`path_prefix`** on **`search`** and **`get_map`**; CLI **`--path-prefix`**.

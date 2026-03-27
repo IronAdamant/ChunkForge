@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
+import time
 import zlib
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 try:
     import fcntl
@@ -23,6 +25,9 @@ except ImportError:
     _HAS_FCNTL = False
 
 from stele_context.index import VectorIndex
+
+# Windows: msvcrt byte-range locks (stdlib) — fcntl is Unix-only.
+_HAS_MSVC_LOCK = os.name == "nt"
 
 
 INDEX_FILENAME = "hnsw_index.json.zlib"
@@ -54,6 +59,39 @@ def _lock_path(index_dir: Path, filename: str) -> Path:
     return index_dir / (filename + ".lock")
 
 
+def _exclusive_lock(lock_fd: BinaryIO) -> None:
+    """Serialize writers across processes (fcntl on Unix, msvcrt on Windows)."""
+    if _HAS_FCNTL:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    elif _HAS_MSVC_LOCK:
+        import msvcrt
+
+        # msvcrt stubs may omit locking(); only used on Windows.
+        msvcrt.locking(lock_fd.fileno(), msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined]
+
+
+def _release_lock(lock_fd: BinaryIO) -> None:
+    if _HAS_FCNTL:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+    elif _HAS_MSVC_LOCK:
+        import msvcrt
+
+        msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
+
+
+def _atomic_replace_tmp_to_target(tmp_path: str, target: Path) -> None:
+    """Rename temp file over target; retry on Windows (concurrent replace / AV)."""
+    src = Path(tmp_path)
+    for attempt in range(16):
+        try:
+            src.replace(target)
+            return
+        except PermissionError:
+            if os.name != "nt" or attempt == 15:
+                raise
+            time.sleep(0.01 * (attempt + 1))
+
+
 def _save_compressed_json(data: dict[str, Any], filename: str, index_dir: Path) -> None:
     """Serialize a dict to a compressed JSON file (atomic write).
 
@@ -67,21 +105,20 @@ def _save_compressed_json(data: dict[str, Any], filename: str, index_dir: Path) 
     target = index_dir / filename
 
     lock_file = _lock_path(index_dir, filename)
-    with open(lock_file, "w") as lock_fd:
-        if _HAS_FCNTL:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    # Binary mode required for msvcrt.locking on Windows.
+    with open(lock_file, "a+b") as lock_fd:
+        _exclusive_lock(lock_fd)
         try:
             fd, tmp_path = tempfile.mkstemp(dir=str(index_dir), suffix=".tmp")
             try:
                 with open(fd, "wb") as f:
                     f.write(compressed)
-                Path(tmp_path).replace(target)
+                _atomic_replace_tmp_to_target(tmp_path, target)
             except Exception:
                 Path(tmp_path).unlink(missing_ok=True)
                 raise
         finally:
-            if _HAS_FCNTL:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            _release_lock(lock_fd)
 
 
 def _load_compressed_json(filename: str, index_dir: Path) -> dict[str, Any] | None:
