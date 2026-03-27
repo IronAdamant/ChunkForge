@@ -3,6 +3,7 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+  workflow_dispatch:  # Manual re-run after configuring PYPI_API_TOKEN
 
 jobs:
   publish:
@@ -32,8 +33,14 @@ jobs:
       run: |
         twine check dist/*
 
+    # Twine upload avoids PyPI Trusted Publishing (OIDC). Set repo secret PYPI_API_TOKEN.
     - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        if [ -z "${TWINE_PASSWORD}" ]; then
+          echo "::error::Repository secret PYPI_API_TOKEN is not set (PyPI → Account → API tokens)."
+          exit 1
+        fi
+        python -m twine upload dist/*

@@ -476,11 +476,20 @@ Verify the grammar package is installed: `pip install tree-sitter-javascript` (e
 **Stale `.pyc` files causing issues**
 Run `stele-context` with the `environment_check` MCP tool, or call `engine.check_environment()`. Use `engine.clean_bytecache()` to remove orphaned `.pyc` files.
 
+## Releasing (maintainers)
+
+1. Bump `version` in `pyproject.toml` and `stele_context/__init__.py`, update `CHANGELOG.md`.
+2. Tag and push: `git tag -a vX.Y.Z -m "..." && git push origin main && git push origin vX.Y.Z`
+3. **PyPI:** In the GitHub repo, add secret **`PYPI_API_TOKEN`** (PyPI → Account settings → API tokens → scope for `stele-context`).
+4. Create a **GitHub Release** from the tag (or use **Actions → Publish to PyPI → Run workflow** after `workflow_dispatch` is enabled).
+
+The package has **no runtime dependencies** (`dependencies = []`); optional extras stay in `[project.optional-dependencies]`.
+
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest                              # 739 tests
+pytest                              # 850+ tests
 pytest --cov=stele_context           # With coverage
 python benchmarks/run_all.py        # Performance benchmarks
 mypy stele_context/                 # Type checking
