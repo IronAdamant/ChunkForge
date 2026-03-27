@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from stele_context.search_engine import (
     compute_search_alpha,
+    extract_proximity_terms,
     extract_query_identifiers,
     _text_signature,
     init_chunkers,
@@ -23,7 +24,7 @@ class TestComputeSearchAlpha:
         """
         base = 0.7
         result = compute_search_alpha("how do I handle authentication", base)
-        assert result == base - 0.35  # 0.35 for base=0.7
+        assert result == max(0.08, base - 0.40)
 
     def test_underscore_lowers_alpha(self):
         """A query with an underscore is a code signal; alpha should drop."""
@@ -86,7 +87,7 @@ class TestComputeSearchAlpha:
         base = 0.7
         # "the end." — ends with dot so dot condition is False; no other signals → plain NL
         result = compute_search_alpha("the end.", base)
-        assert result == base - 0.35
+        assert result == max(0.08, base - 0.40)
 
 
 class TestExtractQueryIdentifiers:
@@ -142,6 +143,29 @@ class TestExtractQueryIdentifiers:
         """Result should contain unique tokens (set-based de-duplication)."""
         tokens = extract_query_identifiers("parse parse parse")
         assert len(tokens) == len(set(tokens))
+
+
+class TestExtractProximityTerms:
+    """Longer prose tokens for proximity (RecipeLab-style domain queries)."""
+
+    def test_includes_long_words_not_captured_as_identifiers(self):
+        q = "symbol shadow ambiguous scaffold topology MCP triangulation readiness gate"
+        terms = extract_proximity_terms(q)
+        lowered = [t.lower() for t in terms]
+        for need in (
+            "triangulation",
+            "ambiguous",
+            "scaffold",
+            "topology",
+            "readiness",
+        ):
+            assert need in lowered
+
+    def test_superset_of_identifiers(self):
+        q = "parseUserConfig and dietary compliance"
+        terms = extract_proximity_terms(q)
+        assert "dietary" in terms
+        assert "compliance" in terms
 
 
 class TestTextSignature:

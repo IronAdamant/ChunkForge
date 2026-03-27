@@ -116,6 +116,43 @@ def multiply(a, b):
         assert "relevance_score" in results[0]
         assert "document_path" in results[0]
 
+    def test_search_keyword_mode(self, tmp_path):
+        """search_mode=keyword uses BM25 only (no HNSW)."""
+        f = tmp_path / "lib.py"
+        f.write_text("def unique_kwarg_marker_xyz():\n    pass\n")
+        cf = Stele(storage_dir=str(tmp_path / "storage"))
+        cf.index_documents([str(f)])
+        r = cf.search("unique_kwarg_marker_xyz", top_k=3, search_mode="keyword")
+        assert len(r) >= 1
+        assert "unique_kwarg" in (r[0].get("content") or "")
+
+    def test_map_and_stats_include_index_health(self, tmp_path):
+        (tmp_path / ".git").mkdir()
+        f = tmp_path / "a.py"
+        f.write_text("x = 1\n")
+        cf = Stele(
+            storage_dir=str(tmp_path / "storage"),
+            project_root=str(tmp_path),
+            enable_coordination=False,
+        )
+        cf.index_documents([str(f)])
+        m = cf.get_map()
+        assert "index_health" in m
+        assert m["index_health"]["documents"] >= 1
+        assert "latest_indexed_at" in m["index_health"]
+        assert "storage_dir" in m["index_health"]
+        assert "alerts" in m["index_health"]
+        assert m["index_health"]["symbol_graph_status"] in (
+            "ready",
+            "empty_with_chunks",
+        )
+        assert m["project_root"] == str(tmp_path)
+        s = cf.get_stats()
+        assert "index_health" in s
+        assert s["index_health"]["chunks"] >= 1
+        assert "seconds_since_last_index" in s["index_health"]
+        assert s["project_root"] == str(tmp_path)
+
     def test_search_empty_index(self, tmp_path):
         """Test search on empty index returns empty list."""
         cf = Stele(storage_dir=str(tmp_path / "storage"))
@@ -410,7 +447,7 @@ def multiply(a, b):
             for p in scan_new_items
         )
 
-    def test_detect_changes_scan_new_default_off(self, tmp_path):
+    def test_detect_changes_scan_new_disabled_when_false(self, tmp_path):
         (tmp_path / ".git").mkdir()
         (tmp_path / "only_indexed.py").write_text("a = 1\n")
         (tmp_path / "not_indexed.py").write_text("b = 2\n")

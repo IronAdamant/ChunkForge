@@ -29,6 +29,39 @@ class SymbolGraphManager:
         self.storage = storage
         self._extractor = SymbolExtractor()
 
+    def _symbol_index_snapshot(self) -> dict[str, Any]:
+        """Lightweight stats so callers can tell empty index from missing symbol."""
+        st = self.storage.get_storage_stats()
+        sym_n = int(st.get("symbol_count", 0) or 0)
+        doc_n = int(st.get("document_count", 0) or 0)
+        return {
+            "status": "empty" if sym_n == 0 else "ready",
+            "indexed_documents": doc_n,
+            "symbol_row_count": sym_n,
+            "edge_count": int(st.get("edge_count", 0) or 0),
+        }
+
+    @staticmethod
+    def _guidance_when_no_symbol_hits(snapshot: dict[str, Any]) -> str:
+        if snapshot["status"] == "ready":
+            return (
+                "The symbol graph is populated but this name has no matches. "
+                "The symbol may be absent from indexed files, not extracted "
+                "(e.g. highly dynamic code), or spelled differently. "
+                "Try search_text or agent_grep to confirm text occurrences."
+            )
+        if snapshot["indexed_documents"] == 0:
+            return (
+                "No documents are indexed yet, so the symbol index is empty. "
+                "Run index on project paths first, then rebuild_symbols if "
+                "definitions and references stay empty."
+            )
+        return (
+            "Chunks are indexed but the symbol table is empty. "
+            "Run index on source files you need for symbols, then rebuild_symbols "
+            "to populate the graph."
+        )
+
     # -- Helpers --------------------------------------------------------------
 
     @staticmethod
@@ -188,6 +221,7 @@ class SymbolGraphManager:
 
     def find_references(self, symbol: str) -> dict[str, Any]:
         """Find all definitions and references for a symbol name."""
+        snapshot = self._symbol_index_snapshot()
         definitions = self.storage.find_definitions(symbol)
         references = self.storage.find_references_by_name(symbol)
 
@@ -222,16 +256,24 @@ class SymbolGraphManager:
         else:
             verdict = "referenced"
 
-        return {
+        total = len(definitions) + len(references)
+        out: dict[str, Any] = {
             "symbol": symbol,
             "verdict": verdict,
             "definitions": enriched_defs,
             "references": enriched_refs,
-            "total": len(definitions) + len(references),
+            "total": total,
+            "symbol_index": snapshot,
         }
+        if total == 0:
+            out["guidance"] = self._guidance_when_no_symbol_hits(snapshot)
+        else:
+            out["guidance"] = None
+        return out
 
     def find_definition(self, symbol: str) -> dict[str, Any]:
         """Find definition location(s) of a symbol."""
+        snapshot = self._symbol_index_snapshot()
         definitions = self.storage.find_definitions(symbol)
 
         results = []
@@ -249,11 +291,18 @@ class SymbolGraphManager:
                 }
             )
 
-        return {
+        count = len(results)
+        out: dict[str, Any] = {
             "symbol": symbol,
             "definitions": results,
-            "count": len(results),
+            "count": count,
+            "symbol_index": snapshot,
         }
+        if count == 0:
+            out["guidance"] = self._guidance_when_no_symbol_hits(snapshot)
+        else:
+            out["guidance"] = None
+        return out
 
     def impact_radius(
         self,

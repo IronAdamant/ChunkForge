@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from stele_context.document_lock_storage import DocumentLockStorage
+from stele_context.index_health import compute_index_health_snapshot
 from stele_context.storage_schema import (
     connect,
     init_pool,
@@ -611,6 +612,20 @@ class StorageBackend(StorageDelegatesMixin):
             **symbol_stats,
             **lock_stats,
         }
+
+    def get_index_health_snapshot(self) -> dict[str, Any]:
+        """Compact index/symbol freshness summary for map/stats and agents."""
+        st = self.get_storage_stats()
+        with connect(self.db_path) as conn:
+            row = conn.execute("SELECT MAX(indexed_at) FROM documents").fetchone()
+        latest = row[0] if row and row[0] is not None else None
+        return compute_index_health_snapshot(
+            document_count=int(st.get("document_count", 0) or 0),
+            chunk_count=int(st.get("chunk_count", 0) or 0),
+            symbol_count=int(st.get("symbol_count", 0) or 0),
+            storage_dir=str(st.get("storage_dir") or self.base_dir),
+            latest_indexed_at=latest,
+        )
 
     # -- Deletion / cleanup ---------------------------------------------------
 

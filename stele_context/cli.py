@@ -147,6 +147,12 @@ Examples:
         help="Number of results (default: 10)",
     )
     search_parser.add_argument(
+        "--search-mode",
+        choices=("hybrid", "keyword"),
+        default="hybrid",
+        help="hybrid = HNSW+BM25 (default); keyword = BM25 keyword search only",
+    )
+    search_parser.add_argument(
         "--json",
         action="store_true",
         dest="output_json",
@@ -576,7 +582,11 @@ def cmd_agent_grep(args: argparse.Namespace, stele: Stele) -> int:
 
 def cmd_search(args: argparse.Namespace, stele: Stele) -> int:
     """Semantic search across indexed chunks."""
-    results = stele.search(query=args.query, top_k=args.top_k)
+    results = stele.search(
+        query=args.query,
+        top_k=args.top_k,
+        search_mode=getattr(args, "search_mode", "hybrid"),
+    )
 
     if args.output_json:
         print(json.dumps(results, indent=2, default=str))

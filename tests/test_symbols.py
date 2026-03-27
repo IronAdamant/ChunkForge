@@ -427,6 +427,26 @@ class TestEngineSymbolIntegration:
         result = self.cf.find_references("nonexistent_symbol_xyz")
         assert result["verdict"] == "not_found"
         assert result["total"] == 0
+        assert result["symbol_index"]["status"] == "empty"
+        assert result["guidance"] and "index" in result["guidance"].lower()
+
+    def test_find_references_not_found_guidance_when_index_ready(self):
+        self._write_and_index("mod.py", "def known():\n    pass\n")
+        result = self.cf.find_references("totally_missing_symbol_zzz")
+        assert result["verdict"] == "not_found"
+        assert result["symbol_index"]["status"] == "ready"
+        assert result["guidance"] and "populated" in result["guidance"].lower()
+
+    def test_find_definition_guidance_empty_vs_ready(self):
+        r0 = self.cf.find_definition("AnySymbol")
+        assert r0["count"] == 0
+        assert r0["symbol_index"]["status"] == "empty"
+        assert r0["guidance"] and "indexed" in r0["guidance"].lower()
+        self._write_and_index("mod.py", "def known():\n    pass\n")
+        r1 = self.cf.find_definition("missing_def_zzz")
+        assert r1["count"] == 0
+        assert r1["symbol_index"]["status"] == "ready"
+        assert r1["guidance"] and "populated" in r1["guidance"].lower()
 
     def test_impact_radius(self):
         self._write_and_index("base.py", "class Base:\n    pass\n")

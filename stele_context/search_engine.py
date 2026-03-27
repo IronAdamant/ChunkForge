@@ -156,10 +156,13 @@ _QUERY_STOP_WORDS = frozenset(
 )
 
 # Thresholds for the rank-disagreement fallback
-# HNSW/BM25 disagreement at which BM25 is trusted over HNSW (0.6 = <2 overlap in top-5)
-_RANK_DISAGREEMENT_THRESHOLD = 0.6
+# HNSW/BM25 disagreement at which BM25 is trusted over HNSW (0.5 = up to 2/5 overlap)
+_RANK_DISAGREEMENT_THRESHOLD = 0.5
 # Score gap above which HNSW has a "clear winner" that BM25 should confirm
 _SCORE_GAP_THRESHOLD = 0.15
+# Raw cosine spread in the HNSW candidate set below this ⇒ all hits equally
+# "structurally similar" (RecipeLab-style ~0.69 scores); trust BM25 instead.
+_FLAT_HNSW_SPAN_THRESHOLD = 0.035
 
 
 def _text_signature(text: str) -> list[float]:
@@ -189,13 +192,29 @@ def extract_query_identifiers(query: str) -> list[str]:
     return [t for t in tokens if t.lower() not in _QUERY_STOP_WORDS]
 
 
+def extract_proximity_terms(query: str) -> list[str]:
+    """Terms for lexical proximity re-ranking (domain / prose queries).
+
+    Superset of identifier-like tokens: also includes whole words (length ≥ 4)
+    from the query so natural-language feature descriptions (e.g. RecipeLab MCP
+    challenge queries) get co-occurrence boosts when those words appear in text,
+    not only CamelCase or snake_case symbols.
+    """
+    terms: set[str] = {t.lower() for t in extract_query_identifiers(query)}
+    for w in re.findall(r"\b[a-zA-Z]{4,}\b", query):
+        wl = w.lower()
+        if wl not in _QUERY_STOP_WORDS:
+            terms.add(wl)
+    return list(terms)
+
+
 def compute_search_alpha(query: str, base_alpha: float) -> float:
     """Auto-tune blend weight based on query characteristics.
 
     Code-like queries (identifiers, brackets, keywords) get lower
     alpha to weight keyword matching more heavily via BM25.
-    Natural-language queries keep or raise alpha so the HNSW
-    statistical signal can complement BM25 keyword matches.
+    Natural-language queries strongly favor BM25 so domain wording is not
+    drowned out by statistical fingerprints that align with generic code shape.
     """
     signals = sum(
         (
@@ -216,10 +235,9 @@ def compute_search_alpha(query: str, base_alpha: float) -> float:
     if signals >= 1:
         # Moderate code signals: slightly favor BM25.
         return max(0.3, base_alpha - 0.15)
-    # Natural-language: HNSW structural fingerprints weight code patterns
-    # (boilerplate, route handlers, test scaffolding) equally with content.
-    # Lower alpha so BM25 keyword matching dominates for domain queries.
-    return max(0.15, base_alpha - 0.35)
+    # Natural-language: lower alpha further than before (RecipeLab validation:
+    # structural similarity is a poor proxy for topical relevance).
+    return max(0.08, base_alpha - 0.40)
 
 
 def ensure_bm25(
@@ -286,84 +304,103 @@ def search_unlocked(
     search_alpha: float,
     symbol_manager: Any,
     do_ensure_bm25: Any,
+    search_mode: str = "hybrid",
 ) -> list[dict[str, Any]]:
-    """Core hybrid semantic + keyword search logic."""
-    query_sig = _text_signature(query)
+    """Hybrid (HNSW+BM25) or keyword-only (BM25) search across chunks."""
+    mode = (search_mode or "hybrid").strip().lower()
+    if mode not in ("hybrid", "keyword"):
+        mode = "hybrid"
 
-    # Widen HNSW candidate set for re-ranking
-    hnsw_results = vector_index.search(query_sig, k=top_k * 3)
-
-    # BM25 re-ranking -- ensure_bm25 may initialize the index
     do_ensure_bm25()
     bm25_index = get_bm25()
     if bm25_index is None:
         raise RuntimeError("BM25 index not initialized")
 
-    hnsw_scores = dict(hnsw_results) if hnsw_results else {}
-    # Independent BM25 top-k so keyword-relevant chunks are not missed when
-    # HNSW (statistical signatures) returns unrelated neighbours.
-    bm25_ranked = bm25_index.search(query, top_k=max(1, top_k * 2))
-    bm25_only_ids = {cid for cid, _ in bm25_ranked}
-    candidate_ids = list(dict.fromkeys(list(hnsw_scores.keys()) + list(bm25_only_ids)))
-    if not candidate_ids:
-        return []
-
-    bm25_scores = bm25_index.score_batch(query, candidate_ids)
-
-    # Normalize HNSW cosine scores within candidate set.
-    # Statistical signatures share structural features, producing clustered
-    # cosine values (typically 0.6-1.0).  Min-max scaling widens the
-    # effective range so blending with BM25 produces more differentiated scores.
-    if hnsw_scores:
-        max_hnsw = max(hnsw_scores.values())
-        min_hnsw = min(hnsw_scores.values())
-        hnsw_span = max_hnsw - min_hnsw
-        if hnsw_span > 0:
-            hnsw_norm = {k: (v - min_hnsw) / hnsw_span for k, v in hnsw_scores.items()}
+    if mode == "keyword":
+        bm25_ranked = bm25_index.search(query, top_k=max(1, top_k * 2))
+        candidate_ids = list(dict.fromkeys(cid for cid, _ in bm25_ranked))
+        if not candidate_ids:
+            return []
+        bm25_scores = bm25_index.score_batch(query, candidate_ids)
+        max_bm25 = max(bm25_scores.values()) if bm25_scores else 0.0
+        if max_bm25 > 0:
+            bm25_norm = {k: v / max_bm25 for k, v in bm25_scores.items()}
         else:
-            hnsw_norm = {k: 1.0 for k in hnsw_scores}
-    else:
-        hnsw_norm = hnsw_scores
-
-    # Normalize BM25 scores to [0, 1]
-    max_bm25 = max(bm25_scores.values()) if bm25_scores else 0.0
-    if max_bm25 > 0:
-        bm25_norm = {k: v / max_bm25 for k, v in bm25_scores.items()}
-    else:
-        bm25_norm = bm25_scores
-
-    # Identify Tier 2 chunks (agent-supplied signatures) for boost
-    tier2_ids = storage.has_agent_signatures(candidate_ids)
-
-    # Blend: alpha * vector + (1 - alpha) * keyword
-    alpha = compute_search_alpha(query, search_alpha)
-    combined = {}
-    for cid in candidate_ids:
-        vec_score = hnsw_norm.get(cid, 0.0)
-        kw_score = bm25_norm.get(cid, 0.0)
-        if cid in tier2_ids:
-            vec_score *= TIER2_BOOST
-        combined[cid] = alpha * vec_score + (1.0 - alpha) * kw_score
-
-    # BM25 fallback: replace blended ranking with pure BM25 when HNSW is
-    # misleading the results.
-    #
-    # Signal 1 — Rank disagreement: if HNSW and BM25 rank results in completely
-    # different orders (disagreement > 0.6), BM25's keyword intent is more
-    # reliable than HNSW's structural fingerprints for domain-specific queries.
-    #
-    # Signal 2 — Clear winner unconfirmed: if HNSW shows a strong structural
-    # winner that BM25 doesn't confirm, that winner is a structural false
-    # positive (similar bracket ratios / line counts to the query but
-    # keyword-irrelevant).
-    disagreement = _compute_rank_disagreement(hnsw_scores, bm25_scores, top_k=5)
-    has_clear_winner = _has_clear_hnsw_winner(hnsw_scores, bm25_scores)
-    if (disagreement >= _RANK_DISAGREEMENT_THRESHOLD or has_clear_winner) and max(
-        bm25_scores.values(), 0.0
-    ) > 0.0:
+            bm25_norm = bm25_scores
         combined = {cid: bm25_norm.get(cid, 0.0) for cid in candidate_ids}
+        ranked = sorted(combined.items(), key=lambda x: x[1], reverse=True)[:top_k]
+    else:
+        query_sig = _text_signature(query)
 
-    ranked = sorted(combined.items(), key=lambda x: x[1], reverse=True)[:top_k]
+        # Widen HNSW candidate set for re-ranking
+        hnsw_results = vector_index.search(query_sig, k=top_k * 3)
+
+        hnsw_scores = dict(hnsw_results) if hnsw_results else {}
+        hnsw_span_raw = 0.0
+        if hnsw_scores:
+            hnsw_span_raw = max(hnsw_scores.values()) - min(hnsw_scores.values())
+        # Independent BM25 top-k so keyword-relevant chunks are not missed when
+        # HNSW (statistical signatures) returns unrelated neighbours.
+        bm25_ranked = bm25_index.search(query, top_k=max(1, top_k * 2))
+        bm25_only_ids = {cid for cid, _ in bm25_ranked}
+        candidate_ids = list(
+            dict.fromkeys(list(hnsw_scores.keys()) + list(bm25_only_ids))
+        )
+        if not candidate_ids:
+            return []
+
+        bm25_scores = bm25_index.score_batch(query, candidate_ids)
+
+        # Normalize HNSW cosine scores within candidate set.
+        # Statistical signatures share structural features, producing clustered
+        # cosine values (typically 0.6-1.0).  Min-max scaling widens the
+        # effective range so blending with BM25 produces more differentiated scores.
+        if hnsw_scores:
+            max_hnsw = max(hnsw_scores.values())
+            min_hnsw = min(hnsw_scores.values())
+            hnsw_span = max_hnsw - min_hnsw
+            if hnsw_span > 0:
+                hnsw_norm = {
+                    k: (v - min_hnsw) / hnsw_span for k, v in hnsw_scores.items()
+                }
+            else:
+                hnsw_norm = {k: 1.0 for k in hnsw_scores}
+        else:
+            hnsw_norm = hnsw_scores
+
+        # Normalize BM25 scores to [0, 1]
+        max_bm25 = max(bm25_scores.values()) if bm25_scores else 0.0
+        if max_bm25 > 0:
+            bm25_norm = {k: v / max_bm25 for k, v in bm25_scores.items()}
+        else:
+            bm25_norm = bm25_scores
+
+        # Identify Tier 2 chunks (agent-supplied signatures) for boost
+        tier2_ids = storage.has_agent_signatures(candidate_ids)
+
+        # Blend: alpha * vector + (1 - alpha) * keyword
+        alpha = compute_search_alpha(query, search_alpha)
+        combined = {}
+        for cid in candidate_ids:
+            vec_score = hnsw_norm.get(cid, 0.0)
+            kw_score = bm25_norm.get(cid, 0.0)
+            if cid in tier2_ids:
+                vec_score *= TIER2_BOOST
+            combined[cid] = alpha * vec_score + (1.0 - alpha) * kw_score
+
+        # BM25 fallback: replace blended ranking with pure BM25 when HNSW is
+        # misleading the results.
+        disagreement = _compute_rank_disagreement(hnsw_scores, bm25_scores, top_k=5)
+        has_clear_winner = _has_clear_hnsw_winner(hnsw_scores, bm25_scores)
+        flat_hnsw = hnsw_span_raw < _FLAT_HNSW_SPAN_THRESHOLD and len(hnsw_scores) >= 4
+        if (
+            disagreement >= _RANK_DISAGREEMENT_THRESHOLD
+            or has_clear_winner
+            or flat_hnsw
+        ) and max(bm25_scores.values(), default=0.0) > 0.0:
+            combined = {cid: bm25_norm.get(cid, 0.0) for cid in candidate_ids}
+
+        ranked = sorted(combined.items(), key=lambda x: x[1], reverse=True)[:top_k]
 
     results = []
     for chunk_id, score in ranked:
@@ -423,18 +460,20 @@ def search_unlocked(
     # For domain-specific queries ("allergen dietary compliance"), chunks where
     # key terms appear near each other in natural prose are more relevant than
     # chunks that just happen to score well on structural fingerprints.
-    # Only apply when results exist and contain query terms.
-    if results and query_idents:
-        query_terms = [t.lower() for t in query_idents]
-        # Small boost weight so it adjusts ranking without dominating
-        PROXIMITY_WEIGHT = 0.25
+    # Uses extract_proximity_terms (identifiers + length≥4 words) for NL queries.
+    proximity_terms = extract_proximity_terms(query)
+    if not proximity_terms:
+        proximity_terms = [t.lower() for t in query_idents]
+    if results and proximity_terms:
+        query_terms = proximity_terms
+        # Stronger nudge for long prose queries (RecipeLab-style descriptions)
+        prox_w = 0.35 if len(proximity_terms) >= 5 else 0.28
         for r in results:
             prox = _proximity_score(r.get("content", ""), query_terms)
             if prox > 0:
                 # Blend: mostly keep the hybrid score, add a proximity nudge
                 r["relevance_score"] = round(
-                    r["relevance_score"] * (1.0 - PROXIMITY_WEIGHT)
-                    + prox * PROXIMITY_WEIGHT,
+                    r["relevance_score"] * (1.0 - prox_w) + prox * prox_w,
                     6,
                 )
         # Final re-sort after proximity nudge
@@ -545,6 +584,7 @@ def get_map_unlocked(storage: Any) -> dict[str, Any]:
         "documents": result,
         "total_documents": len(result),
         "total_tokens": total_tokens,
+        "index_health": storage.get_index_health_snapshot(),
     }
 
 
@@ -675,4 +715,5 @@ def get_stats_unlocked(storage: Any, vector_index: Any, config: dict) -> dict[st
         "storage": storage.get_storage_stats(),
         "index": vector_index.get_stats(),
         "config": config,
+        "index_health": storage.get_index_health_snapshot(),
     }

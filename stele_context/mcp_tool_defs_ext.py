@@ -16,12 +16,11 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
     {
         "name": "find_references",
         "description": "Find all definitions and usages of a symbol across the "
-        "codebase (LSP-style). Returns a verdict field "
-        "(unreferenced/referenced/external/not_found) for quick dead-code "
-        "checks. More precise than text search — uses the parsed symbol graph. "
-        "USE WHEN: verifying dead code before deletion, checking all callers "
-        "before refactoring a function signature, understanding who depends "
-        "on a symbol.",
+        "codebase (LSP-style). Returns verdict "
+        "(unreferenced/referenced/external/not_found), symbol_index (empty vs ready), "
+        "and guidance when there are no hits — so empty results are never silent: "
+        "distinguishes an unpopulated symbol table from a name absent in the graph. "
+        "USE WHEN: verifying dead code, callers before refactors, dependencies.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -36,8 +35,9 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
     {
         "name": "find_definition",
         "description": "Jump to where a symbol is defined, with full chunk content. "
-        "USE WHEN: reading a function/class implementation, verifying a "
-        "symbol's signature, understanding what a symbol does.",
+        "Includes symbol_index and guidance when count is zero (empty index vs "
+        "symbol not in graph). "
+        "USE WHEN: reading implementations, verifying signatures.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -51,12 +51,12 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
     },
     {
         "name": "impact_radius",
-        "description": "Find all chunks affected by changing a chunk or file "
+        "description": "Find chunks affected by changing a chunk or file "
         "(transitive dependents via symbol graph). "
         "Accepts chunk_id or document_path (at least one required). "
-        "Use compact=true for file-level summaries (smaller payloads). "
-        "USE WHEN: assessing blast radius before editing, prioritizing test "
-        "coverage, understanding downstream effects of a change.",
+        "Default compact=true: per-file summaries (recommended for agents); "
+        "set compact=false only for debugging (full chunk list). "
+        "USE WHEN: blast-radius checks before edits, downstream impact.",
         "inputSchema": {
             "type": "object",
             "properties": {

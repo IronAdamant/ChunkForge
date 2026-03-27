@@ -50,7 +50,7 @@ class Stele:
     DEFAULT_MAX_CHUNK_SIZE = 4096
     DEFAULT_MERGE_THRESHOLD = 0.7
     DEFAULT_CHANGE_THRESHOLD = 0.85
-    DEFAULT_SEARCH_ALPHA = 0.5
+    DEFAULT_SEARCH_ALPHA = 0.42
     DEFAULT_SKIP_DIRS = {
         ".git",
         ".hg",
@@ -356,7 +356,11 @@ class Stele:
 
     def get_map(self) -> dict[str, Any]:
         with self._lock.read_lock():
-            return _se.get_map_unlocked(self.storage)
+            data = _se.get_map_unlocked(self.storage)
+        data["project_root"] = (
+            str(self._project_root) if self._project_root is not None else None
+        )
+        return data
 
     def get_history(
         self, limit: int = 20, document_path: str | None = None
@@ -387,11 +391,15 @@ class Stele:
 
     def get_stats(self) -> dict[str, Any]:
         with self._lock.read_lock():
-            return _se.get_stats_unlocked(
+            data = _se.get_stats_unlocked(
                 self.storage,
                 self.vector_index,
                 {k: getattr(self, k) for k in self._STAT_KEYS},
             )
+        data["project_root"] = (
+            str(self._project_root) if self._project_root is not None else None
+        )
+        return data
 
     def search_text(
         self,
@@ -591,7 +599,13 @@ class Stele:
 
     # -- Search (delegated to stele_context.search_engine) ----------------------------
 
-    def search(self, query: str, top_k: int = 10) -> list[dict[str, Any]]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        *,
+        search_mode: str = "hybrid",
+    ) -> list[dict[str, Any]]:
         with self._lock.read_lock():
             return _se.search_unlocked(
                 query,
@@ -602,6 +616,7 @@ class Stele:
                 search_alpha=self.search_alpha,
                 symbol_manager=self.symbol_manager,
                 do_ensure_bm25=self._ensure_bm25,
+                search_mode=search_mode,
             )
 
     def get_context(self, document_paths: list[str]) -> dict[str, Any]:

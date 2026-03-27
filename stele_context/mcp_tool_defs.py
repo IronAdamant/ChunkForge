@@ -114,12 +114,14 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
     # -- Primary: Search & Exploration ----------------------------------------
     {
         "name": "search",
-        "description": "Semantic + keyword hybrid search across indexed chunks. "
-        "Finds code by meaning, not just exact text — ranks results by "
-        "combined vector similarity and keyword relevance. "
-        "USE WHEN: exploring concepts ('how does auth work?'), finding "
-        "related code by meaning, discovering relevant files for a new task. "
-        "For exact pattern matching or verification, use agent_grep instead.",
+        "description": "Secondary exploration tool — HNSW (statistical vectors) plus "
+        "BM25 keywords with automatic fallback to keyword ranking when vector "
+        "and keyword results disagree. NOT primary retrieval: results can "
+        "favor structural/code boilerplate over query intent. "
+        "USE WHEN: broad exploration after indexing; prefer agent_grep or "
+        "search_text for verifying identifiers, renames, or exact occurrences. "
+        "Prefer find_references / find_definition for symbol navigation. "
+        "Use search_mode=keyword for deterministic BM25-only ranking (no vectors).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -132,6 +134,12 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
                     "description": "Number of results",
                     "default": 10,
                 },
+                "search_mode": {
+                    "type": "string",
+                    "enum": ["hybrid", "keyword"],
+                    "description": "hybrid = HNSW+BM25 (default); keyword = BM25 only",
+                    "default": "hybrid",
+                },
             },
             "required": ["query"],
         },
@@ -139,7 +147,9 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
     {
         "name": "map",
         "description": "Project overview: all indexed documents with chunk counts, "
-        "token totals, and annotations. "
+        "token totals, annotations, index_health (documents/chunks/symbol_rows, "
+        "storage_dir, latest_indexed_at, seconds_since_last_index, "
+        "symbol_graph_status, chunk_store_status, alerts), and project_root. "
         "USE WHEN: starting work on a project, understanding what's indexed, "
         "checking project scope and size.",
         "inputSchema": {
@@ -201,8 +211,11 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
     {
         "name": "detect_changes",
         "description": "Detect and re-index changed documents since last indexing. "
-        "USE WHEN: after external edits, between agent passes, verifying "
-        "what changed before proceeding.",
+        "By default (scan_new=true) also scans the project root for new files "
+        "with chunker extensions not yet in the index — they appear under new "
+        "with reason New file (scan). "
+        "USE WHEN: after external edits, between agent passes, discovering "
+        "new files, verifying what changed before proceeding.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -426,7 +439,9 @@ _TOOL_DEFINITIONS_CORE: list[dict[str, Any]] = [
     },
     {
         "name": "stats",
-        "description": "Get Stele statistics: storage counts, index health, config",
+        "description": "Stele statistics: storage counts, vector index stats, config, "
+        "index_health (same fields as map, including alerts and staleness hints), "
+        "and project_root",
         "inputSchema": {
             "type": "object",
             "properties": {},
