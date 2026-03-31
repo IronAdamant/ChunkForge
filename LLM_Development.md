@@ -2,6 +2,19 @@
 
 Chronological record of development activity on Stele Context, maintained for LLM agent context.
 
+## 2026-03-31 - v1.0.8 Grep-first indexing + symbol graph fix
+
+- **`storage_schema.py`**: Added `session_searches` and `session_file_reads` tables for search + read provenance tracking.
+- **`session_storage.py`**: New methods `record_search`, `get_search_history`, `record_file_read`, `get_session_read_files`.
+- **`storage_delegates.py`**: Forward the 4 new methods from StorageBackend.
+- **`agent_grep.py`**: `session_id` param + auto-index hook; returns `files_with_matches`.
+- **`engine.py`**: `get_context` records file reads via `session_id`; `agent_grep` + `search_text` auto-index files with matches (outside write lock); new `get_search_history`, `get_session_read_files`.
+- **`tool_registry.py`**: Added `get_search_history`, `get_session_read_files`.
+- **`mcp_tool_defs.py`**: Added schemas for new tools + `session_id` on `agent_grep`/`get_context`/`search_text`.
+- **`docs/agent-workflow.md`**: Grep-first section added; CLAUDE.md agent workflow rewritten.
+- **Bug fix**: `indexing.py`/`change_detection.py` — `rebuild_edges(affected_chunk_ids=...)` was dropping cross-file edges; changed to full rebuild. `index_documents` now calls `propagate_staleness`.
+- **PyPI**: Updated to v1.0.8.
+
 ## 2026-03-27 - v1.0.7 Windows test path normalization
 
 - **`test_symbols`**: `test_integration_js_impact_from_html` uses `Path.as_posix()` for `document_path` sets (Windows CI).
@@ -20,7 +33,7 @@ Chronological record of development activity on Stele Context, maintained for LL
 ## 2026-03-27 - v1.0.4 Agent orientation and bounded retrieval
 
 - **`AGENTS.md`**, **`docs/philosophy.md`**, **`docs/agent-workflow.md`** — parity docs for LLM-first workflows (session vs index, Tier 2 bootstrap, trust).
-- **`agent_response.py`**, **`doctor`**, **`project_brief`**, compact **`search`**/**`map`**/**`stats`**, **`get_context`** trust + **`chunks.agent_notes`**; MCP tool count **53**; CLI **`doctor`**, **`project-brief`**.
+- **`agent_response.py`**, **`doctor`**, **`project_brief`**, compact **`search`**/**`map`**/**`stats`**, **`get_context`** trust + **`chunks.agent_notes`**; MCP tool count **55** (was 53 in 1.0.4); CLI **`doctor`**, **`project-brief`**.
 - **CHANGELOG [1.0.4]**, README, COMPLETE_PROJECT_DOCUMENTATION, wiki `spec-project.md`, CLAUDE.md updated for release parity.
 
 ## 2026-03-27 - v1.0.3 Agent UX and index diagnostics

@@ -22,9 +22,9 @@ Stele is a **local, persistent index** of your project: chunks, hybrid search (H
 ## Retrieval discipline
 
 - **Symbols** (`find_definition`, `find_references`) for identifiers and imports.
-- **`agent_grep` / `search_text`** for exhaustive or regex proof.
+- **`agent_grep` / `search_text`** for exhaustive or regex proof. Both accept **`session_id`** — they auto-index files with matches and record search history, so **`get_search_history`** tells you what you already searched.
 - **`search`** for exploration; use **`compact`**, **`max_result_tokens`**, or **`return_response_meta`** to cap context.
-- **`get_context`** returns **trust** hints (mtime vs index, staleness) and optional **`agent_notes`** per chunk.
+- **`get_context`** returns **trust** hints (mtime vs index, staleness) and optional **`agent_notes`** per chunk. Pass **`session_id`** to record which files were fully read — check **`get_session_read_files`** to avoid re-fetching.
 
 ## Tier 2 and chunk notes
 

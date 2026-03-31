@@ -28,7 +28,7 @@
 | `stele_context/storage_schema.py` | Database init and migration SQL | connection_pool | test_storage_migration.py |
 | `stele_context/connection_pool.py` | Thread-local SQLite connection reuse | None | (via test_engine.py) |
 | `stele_context/storage_delegates.py` | `StorageDelegatesMixin` - forwarding methods | None (mixin) | (via test_engine.py) |
-| `stele_context/session_storage.py` | Session table operations, KV-cache | None | test_session.py |
+| `stele_context/session_storage.py` | Session table, KV-cache, search history, file-read provenance | None | test_session.py |
 | `stele_context/metadata_storage.py` | Annotations and change history tables | None | test_metadata.py |
 | `stele_context/symbol_storage.py` | Symbols and symbol edges tables | None | test_symbol_storage.py |
 | `stele_context/lock_ops.py` | Shared lock primitives (refresh, conflict, reap) | None | test_conflicts.py, test_worktree_safety.py |
@@ -63,7 +63,7 @@
 | `stele_context/mcp_handlers.py` | Backward-compat shim (re-exports from mcp_server) | mcp_server, tool_registry | test_mcp_server.py |
 | `stele_context/tool_registry.py` | Unified tool dispatch, WRITE_TOOLS, HTTP schemas, modality flags | mcp_tool_defs | (via test_mcp_server.py, test_mcp_stdio.py) |
 | `stele_context/mcp_stdio.py` | MCP stdio server (JSON-RPC for Claude Desktop) | mcp_tool_defs, tool_registry | test_mcp_stdio.py |
-| `stele_context/mcp_tool_defs.py` | MCP tool definitions (core; combined with ext = 53 tools) | mcp_tool_defs_ext | (via test_mcp_stdio.py) |
+| `stele_context/mcp_tool_defs.py` | MCP tool definitions (core; combined with ext = 55 tools) | mcp_tool_defs_ext | (via test_mcp_stdio.py) |
 | `stele_context/mcp_tool_defs_ext.py` | MCP tool definitions (extended) | None | (via test_mcp_stdio.py) |
 
 ## Test Files

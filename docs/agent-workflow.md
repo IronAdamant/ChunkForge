@@ -31,10 +31,26 @@ After this, **`search`**, **`get_context`**, **`find_references`**, etc. have ma
 
 | Need | Prefer |
 |------|--------|
-| Exact string / regex proof | `search_text` or **`agent_grep`** (scoped, token budget, dedup) |
+| Exact string / regex proof | `search_text` or **`agent_grep`** (scoped, token budget, dedup; auto-indexes + session history) |
 | “Where is X defined / used?” | **`find_definition`**, **`find_references`** (symbol graph) |
 | Exploratory “what talks about Y?” | **`search`** (hybrid HNSW + BM25), stronger if Tier 2 is populated |
-| Current chunk text | **`get_context`** (optional **trust** + **agent_notes** per chunk) |
+| Current chunk text | **`get_context`** (optional **trust** + **agent_notes** per chunk; records reads in session) |
+
+### Grep-first: searching = caching
+
+Every **`agent_grep`** or **`search_text`** call with a **`session_id`** automatically
+indexes the files it finds matches in — no separate `index` call needed. The session
+records what you searched and what files were cached:
+
+```
+agent_grep “createRouter” --session-id S
+get_search_history --session-id S    # “you grep'd file X, it's fresh”
+get_context file_x.js --session-id S  # full cached content, no disk re-read
+get_session_read_files --session-id S # all files fully read this session
+```
+
+This makes **`get_search_history`** the “post-it note” — it tells the LLM what it
+already looked at before re-running a search or re-reading a file.
 
 Rough rule: **symbols first** for identifiers; **hybrid search** for concepts; **grep-style** for exhaustive verification.
 

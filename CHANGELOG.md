@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.8] - 2026-03-31
 
+### Added
+- **Grep-first indexing** — `agent_grep` and `search_text` with `session_id` now auto-index files that had matches and record search history. `get_search_history(session_id)` returns what you grep'd; `get_context` with `session_id` records fully-read files. New tools: `get_search_history`, `get_session_read_files`. MCP tool count: **55** (was 53).
+
 ### Fixed
 - **`indexing.py` / `change_detection.py`** — `rebuild_edges` was called with `affected_chunk_ids=...` (incremental), silently dropping edges from unchanged files that referenced newly indexed/modified files. Changed to full rebuild (`affected_chunk_ids=None`) — O(30K symbols, <1 s). `index_documents` now also calls `propagate_staleness` after indexing, so `stale_chunks()` correctly flags dependents. Manual `rebuild_graph` no longer needed after `stele index`.
 
