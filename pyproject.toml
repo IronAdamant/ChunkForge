@@ -5,14 +5,20 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "stele-context"
 version = "1.0.9"
-description = "Local context cache for LLM agents with semantic chunking and vector search"
+description = "Give your AI coding agent persistent memory — stop re-reading files every conversation. MCP server for Claude Code, Claude Desktop, Cursor, and other AI coding tools."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 authors = [
     {name = "Stele Context Contributors"}
 ]
-keywords = ["llm", "context-cache", "chunking", "vector-search", "semantic-search", "offline", "local"]
+keywords = [
+    "mcp-server", "claude-code", "claude-desktop", "ai-coding",
+    "code-memory", "context-cache", "codebase-index",
+    "save-context", "persistent-memory", "offline",
+    "code-search", "symbol-graph", "find-references",
+    "cursor", "ai-agent", "llm-tools",
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",

@@ -1,6 +1,6 @@
 # Stele Context
 
-**Give your AI coding agent a memory. Stop it from re-reading the same files every conversation.**
+**Persistent memory for AI coding agents. An MCP server that helps Claude Code, Claude Desktop, Cursor, and other AI tools remember your codebase between conversations.**
 
 [![PyPI](https://img.shields.io/pypi/v/stele-context.svg)](https://pypi.org/project/stele-context/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,11 +10,11 @@
 
 ## The Problem
 
-Every time you start a new conversation with an AI coding agent (Claude Code, Cursor, etc.), it has to read your files from scratch. For a medium-sized project, that's thousands of tokens spent re-reading code that hasn't changed since last time.
+Every time you start a new conversation with Claude Code, Cursor, or any AI coding assistant, it has to read your files from scratch. For a medium-sized project, that's thousands of tokens spent re-reading code that hasn't changed since last time. Your AI agent has no memory of what it already knows about your project.
 
 ## What Stele Context Does
 
-Stele Context remembers your codebase between conversations. It:
+Stele Context gives your AI coding agent persistent memory across conversations. It:
 
 1. **Indexes your project files** once — code, docs, configs, even images and PDFs
 2. **Detects what changed** since last time — only changed files get re-read
@@ -83,6 +83,16 @@ pip install stele-context[mcp]
 > **Tip:** If you installed in a virtualenv, use the full path: run `which stele-context` to find it.
 
 Once connected, your agent gets 55+ tools for searching, indexing, and navigating your code — it'll use them automatically when they're helpful.
+
+## Who Is This For?
+
+- You use **Claude Code**, **Claude Desktop**, **Cursor**, or another AI coding tool
+- You're tired of your agent re-reading the same files at the start of every conversation
+- You want your AI to **remember your codebase** and know how your code connects
+- You want a **code search tool** that understands your project, not just filenames
+- You want something that runs **100% offline** with **no API keys** and **no cloud**
+
+If you've ever wished your AI coding assistant had a persistent memory for your project, that's what this does.
 
 ## What Can It Do?
 
@@ -229,20 +239,26 @@ Another agent might be holding a lock. Run `stele-context` with the `reap_expire
 
 ## FAQ
 
-**Does it need an internet connection?**
-No. Everything runs locally. No API calls, no downloads, no telemetry.
+**How do I make Claude Code remember my project between conversations?**
+Install Stele Context and add it as an MCP server (see Quick Start above). Once connected, Claude Code can index your project and recall file contents, symbol locations, and code structure across conversations without re-reading everything.
 
-**Is it safe?**
-Yes. Zero dependencies means no supply chain risk. No pickle (a common Python security issue). No data leaves your machine. ~13,000 lines of Python you can read yourself.
+**Does this work with Cursor / other AI coding tools?**
+Yes. Stele Context runs as an MCP server, which is a standard protocol. Any AI tool that supports MCP can use it. It also has an HTTP REST API and a Python library for direct integration.
 
-**Can multiple agents use it at the same time?**
-Yes. Built-in document locking and version tracking prevent conflicts.
+**Does it need an internet connection or API keys?**
+No. Everything runs locally on your machine. No API calls, no cloud, no model downloads, no telemetry. Zero dependencies — just Python's standard library.
 
-**What if tree-sitter isn't installed?**
-Code parsing falls back to pattern matching. It still works, just slightly less precise for some languages.
+**Is my code safe?**
+Yes. Your code never leaves your machine. No data is sent anywhere. Zero third-party dependencies means no supply chain risk. ~13,000 lines of Python you can read and audit yourself.
 
-**Where is data stored?**
-In a `.stele-context/` folder in your project root. Each git worktree gets its own.
+**Can multiple AI agents use it at the same time?**
+Yes. Built-in document locking and version tracking prevent agents from stepping on each other.
+
+**Where is the data stored?**
+In a `.stele-context/` folder in your project root. It's just a SQLite database and some index files. Each git worktree gets its own.
+
+**How is this different from just using CLAUDE.md or project memory?**
+CLAUDE.md gives your agent instructions. Stele Context gives it a searchable index of your entire codebase — every function, every import, every file relationship. It knows what changed since last time and can answer "where is this function used?" or "what breaks if I change this file?" without reading everything again.
 
 ## Learn More
 
