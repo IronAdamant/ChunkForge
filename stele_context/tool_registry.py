@@ -26,6 +26,7 @@ WRITE_TOOLS = frozenset(
         "save_kv_state",
         "store_semantic_summary",
         "store_embedding",
+        "bulk_store_embeddings",
         "llm_embed",
         "bulk_store_summaries",
         "store_chunk_agent_notes",
@@ -111,6 +112,7 @@ def build_tool_map(
         # Embeddings
         "store_semantic_summary": engine.store_semantic_summary,
         "store_embedding": engine.store_embedding,
+        "bulk_store_embeddings": engine.bulk_store_embeddings,
         "llm_embed": engine.llm_embed,
         "bulk_store_summaries": engine.bulk_store_summaries,
         "store_chunk_agent_notes": engine.store_chunk_agent_notes,

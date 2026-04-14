@@ -412,6 +412,26 @@ class StorageBackend(StorageDelegatesMixin):
             )
             return cursor.rowcount > 0
 
+    def bulk_store_agent_signatures(
+        self,
+        embeddings: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Batch-store raw embedding vectors for multiple chunk IDs."""
+        stored = 0
+        errors: list[str] = []
+        with connect(self.db_path) as conn:
+            for cid, sig in embeddings.items():
+                sig_bytes = sig_to_bytes(sig)
+                cur = conn.execute(
+                    "UPDATE chunks SET agent_signature = ? WHERE chunk_id = ?",
+                    (sig_bytes, cid),
+                )
+                if cur.rowcount:
+                    stored += 1
+                else:
+                    errors.append(cid)
+        return {"stored": stored, "errors": errors, "total": len(embeddings)}
+
     def store_chunk_agent_notes(self, chunk_id: str, notes: str | None) -> bool:
         """Store optional JSON or plain-text notes on a chunk (agent scratchpad)."""
         with connect(self.db_path) as conn:

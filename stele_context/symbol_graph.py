@@ -426,6 +426,7 @@ class SymbolGraphManager:
         chunk_id: str | None = None,
         depth: int = 2,
         document_path: str | None = None,
+        symbol: str | None = None,
         *,
         compact: bool = True,
         include_content: bool = True,
@@ -437,8 +438,9 @@ class SymbolGraphManager:
     ) -> dict[str, Any]:
         """Find all chunks affected by a change to a chunk or file (BFS).
 
-        Accepts either ``chunk_id`` (single chunk) or ``document_path``
-        (all chunks in a file).  At least one must be provided.
+        Accepts either ``chunk_id`` (single chunk), ``document_path``
+        (all chunks in a file), or ``symbol`` (all chunks where the symbol
+        is defined). At least one must be provided.
 
         ``compact`` returns per-file summaries instead of per-chunk records.
         ``include_content=False`` omits chunk text (smaller payloads).
@@ -450,7 +452,19 @@ class SymbolGraphManager:
             compact = True
             include_content = False
         # Resolve seed chunk IDs
-        if document_path and not chunk_id:
+        if symbol and not chunk_id:
+            defs = self.storage.find_definitions(symbol)
+            if not defs:
+                return {
+                    "origin": symbol,
+                    "max_depth": depth,
+                    "affected_chunks": 0,
+                    "affected_files": 0,
+                    "chunks": [],
+                }
+            seed_ids = {d["chunk_id"] for d in defs}
+            origin = symbol
+        elif document_path and not chunk_id:
             doc_chunks = self.storage.get_document_chunks(document_path)
             if not doc_chunks:
                 return {
@@ -466,7 +480,7 @@ class SymbolGraphManager:
             seed_ids = {chunk_id}
             origin = chunk_id
         else:
-            return {"error": "Provide chunk_id or document_path"}
+            return {"error": "Provide chunk_id, document_path, or symbol"}
 
         exclude_set = set(exclude_symbols) if exclude_symbols else None
 
@@ -619,16 +633,30 @@ class SymbolGraphManager:
 
         Queries all symbol edges involving chunks from the target document,
         groups by the OTHER document, and counts shared symbols per pair.
+        Falls back to dynamic symbols registered for this document_path when
+        no indexed chunks exist.
         """
         doc_chunks = self.storage.get_document_chunks(document_path)
-        if not doc_chunks:
+        doc_chunk_ids: set[str] = set()
+        if doc_chunks:
+            doc_chunk_ids = {c["chunk_id"] for c in doc_chunks}
+        else:
+            # Fallback: use dynamic symbols registered for this path
+            dyn = self.storage.get_all_symbols()
+            doc_chunk_ids = {
+                s["chunk_id"]
+                for s in dyn
+                if s.get("document_path") == document_path
+                and s.get("chunk_id", "").startswith("runtime:")
+            }
+
+        if not doc_chunk_ids:
             return {
                 "document_path": document_path,
                 "coupled_files": [],
                 "total_coupled": 0,
             }
 
-        doc_chunk_ids = {c["chunk_id"] for c in doc_chunks}
         exclude_set = set(exclude_symbols) if exclude_symbols else None
 
         # Collect edges in both directions

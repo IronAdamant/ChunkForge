@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`bulk_store_embeddings`** — Batch API for storing raw embedding vectors across multiple chunks at once. Useful for large dynamic symbol meshes and Tier-2 semantic enrichment workflows.
+- **`impact_radius(..., symbol=...)`** — Analyze blast radius by symbol name, enabling impact analysis for dynamic/runtime symbols that have no on-disk file (e.g. plugin hooks registered via `register_dynamic_symbols`).
+- **`coupling` dynamic symbol fallback** — When a document_path has no indexed chunks, `coupling` now falls back to dynamic symbols registered for that path, allowing coupling analysis for synthetic/runtime documents.
+
+### Fixed
+- **MCP `agent_id` injection** — The MCP bridge no longer injects `agent_id` into tools that do not accept it (e.g. `llm_embed`, `store_embedding`, `bulk_store_embeddings`). Fixes `TypeError: got an unexpected keyword argument 'agent_id'` when calling embedding tools through the MCP server.
+
+### Added
 - **Symbol `container` scoping** — The `Symbol` dataclass now carries a `container` field (e.g. `ClassName` or `ClassName.methodName`) populated by the Python AST and JS/TS regex extractors. `resolve_symbols` uses this to prefer definitions that share the reference's container, eliminating false coupling between unrelated files that happen to define the same generic name.
 - **Test-to-source linking** — The symbol graph now creates `test_of` edges automatically. Test files are linked to source files via filename convention (`test_X.py` → `X.py`, `X_test.py` → `X.py`) and import-to-path analysis, making `impact_radius` and `coupling` aware of test coverage.
 - **Incremental edge rebuilds (restored)** — `rebuild_edges(affected_chunk_ids=...)` is safe again. It tracks which symbol names changed in affected chunks and re-resolves edges for *all* chunks referencing those names, preserving edges from unchanged files that point into modified files. Large codebase indexing no longer forces a full O(N) rebuild on every update.

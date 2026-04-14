@@ -18,6 +18,7 @@ Claude Desktop config:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -31,6 +32,16 @@ from stele_context.tool_registry import WRITE_TOOLS, build_tool_map, get_modalit
 logger = logging.getLogger(__name__)
 
 HEARTBEAT_INTERVAL = 30  # seconds between heartbeats and lock reaping
+
+
+def _accepts_agent_id(func: Any) -> bool:
+    """Check whether a callable accepts an 'agent_id' keyword argument."""
+    try:
+        sig = inspect.signature(func)
+        return "agent_id" in sig.parameters
+    except (ValueError, TypeError):
+        return False
+
 
 # Guard MCP SDK import
 try:
@@ -101,7 +112,13 @@ def create_server(storage_dir: str | None = None) -> _ServerBundle:
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         try:
             # Inject server agent_id for write operations when not provided
-            if name in WRITE_TOOLS and "agent_id" not in arguments and server_agent_id:
+            if (
+                name in WRITE_TOOLS
+                and "agent_id" not in arguments
+                and server_agent_id
+                and name in tool_map
+                and _accepts_agent_id(tool_map[name])
+            ):
                 arguments = {**arguments, "agent_id": server_agent_id}
 
             if name not in tool_map:

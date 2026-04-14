@@ -82,7 +82,7 @@ pip install stele-context[mcp]
 
 > **Tip:** If you installed in a virtualenv, use the full path: run `which stele-context` to find it.
 
-Once connected, your agent gets 55+ tools for searching, indexing, and navigating your code — it'll use them automatically when they're helpful.
+Once connected, your agent gets 56+ tools for searching, indexing, and navigating your code — it'll use them automatically when they're helpful.
 
 ## Who Is This For?
 
@@ -102,7 +102,7 @@ If you've ever wished your AI coding assistant had a persistent memory for your 
 |---------------|-----------------|
 | "Don't re-read files that haven't changed" | `get_context` returns cached content for unchanged files, only re-reads modified ones |
 | "Find where this function is used" | `find_references` traces all imports and usages across your project (including JS bare calls and `new ClassName()`) |
-| "What files would break if I change this?" | `impact_radius` follows the dependency chain to find affected files; `significance_threshold` filters out noise from common symbols like `push`/`addEdge` |
+| "What files would break if I change this?" | `impact_radius` follows the dependency chain to find affected files; `significance_threshold` filters out noise from common symbols like `push`/`addEdge`. Also works with `symbol=` for dynamic/runtime hooks |
 | "Which files are tightly coupled?" | `coupling` shows shared symbols with a `semantic_score` that discounts generic boilerplate |
 | "Search my code by what it does, not just keywords" | `search` combines meaning-based and keyword matching |
 | "Find every line matching a pattern" | `agent_grep` does text/regex search with token-budgeted results |
@@ -153,6 +153,10 @@ print(f"Verdict: {refs['verdict']}")  # referenced, unreferenced, external, or n
 
 # What breaks if I change this file?
 impact = engine.impact_radius(document_path="src/main.py")
+print(f"{impact['affected_files']} files could be affected")
+
+# Analyze impact of a dynamic/runtime symbol
+impact = engine.impact_radius(symbol="onRecipeCreate")
 print(f"{impact['affected_files']} files could be affected")
 ```
 
@@ -273,7 +277,7 @@ CLAUDE.md gives your agent instructions. Stele Context gives it a searchable ind
 
 ```bash
 pip install -e ".[dev]"
-pytest                              # 870+ tests
+pytest                              # 880+ tests
 pytest --cov=stele_context           # With coverage
 mypy stele_context/                 # Type checking
 ruff check stele_context/           # Linting

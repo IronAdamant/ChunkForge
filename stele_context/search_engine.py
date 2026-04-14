@@ -793,6 +793,31 @@ def store_embedding_unlocked(
     return {"stored": True, "chunk_id": chunk_id}
 
 
+def bulk_store_embeddings_unlocked(
+    embeddings: dict[str, list[float]],
+    storage: Any,
+    vector_index: Any,
+    save_index: Any,
+) -> dict[str, Any]:
+    """Normalize and store raw embedding vectors for multiple chunks."""
+    normalized: dict[str, list[float]] = {}
+    for cid, vector in embeddings.items():
+        norm = sum(x * x for x in vector) ** 0.5
+        if norm > 0:
+            normalized[cid] = [x / norm for x in vector]
+        else:
+            normalized[cid] = vector
+
+    result = storage.bulk_store_agent_signatures(normalized)
+    stored_ids = [cid for cid in embeddings if cid not in result.get("errors", [])]
+    for cid in stored_ids:
+        vector_index.remove_chunk(cid)
+        vector_index.add_chunk(cid, normalized[cid])
+    if stored_ids:
+        save_index()
+    return result
+
+
 def load_or_rebuild_index(storage: Any) -> VectorIndex:
     """Load persisted index if fresh, otherwise rebuild from SQLite."""
     from stele_context.chunkers.numpy_compat import sig_from_bytes

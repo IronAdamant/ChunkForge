@@ -527,11 +527,20 @@ class Stele:
                 chunk_id, vector, self.storage, self.vector_index, self._save_index
             )
 
+    def bulk_store_embeddings(
+        self, embeddings: dict[str, list[float]]
+    ) -> dict[str, Any]:
+        with self._lock.write_lock():
+            return _se.bulk_store_embeddings_unlocked(
+                embeddings, self.storage, self.vector_index, self._save_index
+            )
+
     def llm_embed(
         self,
         text: str,
         chunk_id: str,
         fingerprint_values: list[float] | None = None,
+        agent_id: str | None = None,
     ) -> dict[str, Any]:
         """Generate and store a semantic embedding via LLM reasoning.
 
@@ -813,6 +822,7 @@ class Stele:
         chunk_id: str | None = None,
         depth: int = 2,
         document_path: str | None = None,
+        symbol: str | None = None,
         *,
         compact: bool = True,
         include_content: bool = True,
@@ -829,6 +839,7 @@ class Stele:
                 chunk_id,
                 depth,
                 document_path,
+                symbol=symbol,
                 compact=compact,
                 include_content=include_content,
                 path_filter=path_filter,

@@ -13,6 +13,7 @@ Supports multi-modal content: text, code, images, PDFs, audio, video.
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import os
@@ -36,6 +37,15 @@ logger = logging.getLogger(__name__)
 _TOOL_SCHEMAS = get_http_schemas()
 
 
+def _accepts_agent_id(func: Any) -> bool:
+    """Check whether a callable accepts an 'agent_id' keyword argument."""
+    try:
+        sig = inspect.signature(func)
+        return "agent_id" in sig.parameters
+    except (ValueError, TypeError):
+        return False
+
+
 def execute_tool(
     tool_name: str,
     parameters: dict[str, Any],
@@ -43,7 +53,13 @@ def execute_tool(
     server_agent_id: str = "",
 ) -> dict[str, Any]:
     """Execute a tool by name, returning a JSON-serialisable result dict."""
-    if tool_name in WRITE_TOOLS and "agent_id" not in parameters and server_agent_id:
+    if (
+        tool_name in WRITE_TOOLS
+        and "agent_id" not in parameters
+        and server_agent_id
+        and tool_name in tool_map
+        and _accepts_agent_id(tool_map[tool_name])
+    ):
         parameters = {**parameters, "agent_id": server_agent_id}
 
     if tool_name not in tool_map:

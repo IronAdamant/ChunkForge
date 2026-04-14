@@ -53,7 +53,7 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
         "name": "impact_radius",
         "description": "Find chunks affected by changing a chunk or file "
         "(transitive dependents via symbol graph). "
-        "Accepts chunk_id or document_path (at least one required). "
+        "Accepts chunk_id, document_path, or symbol (at least one required). "
         "Default compact=true: per-file summaries (recommended for agents); "
         "set compact=false only for debugging (full chunk list). "
         "summary_mode=true returns bounded output: depth_distribution plus "
@@ -72,6 +72,10 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
                 "document_path": {
                     "type": "string",
                     "description": "File path to analyze impact for (all chunks in file used as seeds)",
+                },
+                "symbol": {
+                    "type": "string",
+                    "description": "Symbol name to analyze impact for (all definition chunks used as seeds). Useful for dynamic symbols.",
                 },
                 "depth": {
                     "type": "integer",
@@ -549,6 +553,26 @@ TOOL_DEFINITIONS_EXT: list[dict[str, Any]] = [
                 },
             },
             "required": ["chunk_id", "vector"],
+        },
+    },
+    {
+        "name": "bulk_store_embeddings",
+        "description": "Batch-store raw embedding vectors for multiple chunks. "
+        "Use WHEN: you have many vectors to store at once (e.g. large dynamic symbol meshes).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "embeddings": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                    },
+                    "description": "Mapping of chunk_id to embedding vector. "
+                    'Example: {"chunk_abc": [0.1, -0.2, ...], "chunk_def": [0.3, ...]}',
+                },
+            },
+            "required": ["embeddings"],
         },
     },
     {

@@ -604,6 +604,25 @@ class TestEngineSymbolIntegration:
         result = self.cf.impact_radius()
         assert "error" in result
 
+    def test_impact_radius_by_symbol(self):
+        """impact_radius should work with symbol parameter for dynamic symbols."""
+        self.cf.register_dynamic_symbols(
+            [
+                {"name": "onRecipeCreate", "role": "definition"},
+                {
+                    "name": "onRecipeCreate",
+                    "role": "reference",
+                    "document_path": "caller.py",
+                },
+            ],
+            agent_id="test-agent",
+        )
+        # Index a real file that references the dynamic symbol
+        self._write_and_index("caller.py", "onRecipeCreate()\n")
+        impact = self.cf.impact_radius(symbol="onRecipeCreate", depth=1)
+        assert impact["origin"] == "onRecipeCreate"
+        assert impact["affected_chunks"] >= 1
+
     def test_impact_radius_compact(self):
         self._write_and_index("core.py", "def core_fn():\n    return 1\n")
         self._write_and_index("user.py", "from core import core_fn\ncore_fn()\n")
@@ -706,6 +725,23 @@ class TestEngineSymbolIntegration:
         assert result["total_coupled"] == 0
         assert result["coupled_files"] == []
 
+    def test_coupling_with_dynamic_symbols(self):
+        """coupling should fall back to dynamic symbols when no indexed chunks exist."""
+        self._write_and_index("caller.py", "onRecipeCreate()\n")
+        self.cf.register_dynamic_symbols(
+            [
+                {
+                    "name": "onRecipeCreate",
+                    "role": "definition",
+                    "document_path": "hooks.js",
+                },
+            ],
+            agent_id="test-agent",
+        )
+        result = self.cf.coupling("hooks.js")
+        # Should find coupling through symbol edges (hooks.js -> caller.py)
+        assert result["total_coupled"] >= 1
+
     def test_coupling_significance_threshold(self):
         """significance_threshold should reduce false coupling from common symbols."""
         self._write_and_index("a.js", "function addEdge(x, y) { return x + y; }\n")
@@ -735,6 +771,16 @@ class TestEngineSymbolIntegration:
         first = result["coupled_files"][0]
         assert "semantic_score" in first
         assert isinstance(first["semantic_score"], (int, float))
+
+    def test_llm_embed_accepts_agent_id(self):
+        """llm_embed should accept agent_id parameter (MCP bridge compatibility)."""
+        result = self.cf.llm_embed(
+            text="hello world",
+            chunk_id="test:embed:1",
+            agent_id="test-agent",
+        )
+        assert result["stored"] is True
+        assert result["chunk_id"] == "test:embed:1"
 
     def test_find_definition_shadow_aware(self):
         """Multiple definitions of the same symbol in one file should be annotated."""

@@ -74,8 +74,8 @@ class TestHTTPServer:
             assert "remove_dynamic_symbols" in tool_names
             assert "get_dynamic_symbols" in tool_names
             assert (
-                len(tool_names) == 55
-            )  # +2: get_search_history, get_session_read_files
+                len(tool_names) == 56
+            )  # +3: get_search_history, get_session_read_files, bulk_store_embeddings
         finally:
             server.stop()
 
@@ -344,6 +344,31 @@ class TestHTTPServer:
                 data = json.loads(e.read())
             assert status == 400
             assert "error" in data
+        finally:
+            server.stop()
+
+    def test_bulk_store_embeddings(self, tmp_path):
+        """bulk_store_embeddings tool via HTTP."""
+        server, url, cf = self._start_server(tmp_path)
+        try:
+            test_file = tmp_path / "embed.py"
+            test_file.write_text("x = 1\n")
+            cf.index_documents([str(test_file)])
+
+            chunks = cf.storage.get_document_chunks(str(test_file))
+            assert len(chunks) >= 1
+            cid = chunks[0]["chunk_id"]
+
+            status, data = self._post(
+                f"{url}/call",
+                {
+                    "tool": "bulk_store_embeddings",
+                    "parameters": {"embeddings": {cid: [0.1] * 128}},
+                },
+            )
+            assert status == 200
+            assert data["success"] is True
+            assert data["result"]["stored"] >= 1
         finally:
             server.stop()
 
