@@ -12,9 +12,50 @@ Delegate modules (storage.py, session_storage.py, etc.) require no changes.
 
 from __future__ import annotations
 
+import functools
 import sqlite3
 import threading
+import time
 from pathlib import Path
+from typing import Any, Callable
+
+
+def sqlite_retry(
+    max_attempts: int = 3,
+    base_delay: float = 0.05,
+    max_delay: float = 0.5,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorator that retries a callable on SQLite busy/locked errors.
+
+    Uses exponential backoff with jitter. Zero dependencies.
+    """
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            delay = base_delay
+            last_exception: Exception | None = None
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    last_exception = e
+                    err = str(e).lower()
+                    if (
+                        "busy" not in err
+                        and "locked" not in err
+                        and "database is locked" not in err
+                    ):
+                        raise
+                    if attempt >= max_attempts:
+                        break
+                    time.sleep(delay)
+                    delay = min(delay * 2, max_delay)
+            raise last_exception or RuntimeError("sqlite_retry exhausted all attempts")
+
+        return wrapper
+
+    return decorator
 
 
 class ConnectionPool:

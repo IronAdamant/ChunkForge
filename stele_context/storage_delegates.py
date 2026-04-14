@@ -25,14 +25,29 @@ class StorageDelegatesMixin:
     _metadata_storage: Any
     _symbol_storage: Any
     _document_lock_storage: Any
+    _writer: Any | None = None
+
+    def _delegate_write(self, func: Any, *args: Any, **kwargs: Any) -> Any:
+        """Run a delegate write callable through the single-writer queue if available.
+
+        The delegate's own connect() call will reuse the writer thread's pooled
+        connection, serialising all writes through one SQLite handle.
+        """
+        if self._writer is not None:
+
+            def _wrapper(_conn: Any) -> Any:
+                return func(*args, **kwargs)
+
+            return self._writer.submit(_wrapper)
+        return func(*args, **kwargs)
 
     # -- Metadata (MetadataStorage) -------------------------------------------
 
     def store_annotation(
         self, target: str, target_type: str, content: str, tags: list[str] | None = None
     ) -> int:
-        return self._metadata_storage.store_annotation(
-            target, target_type, content, tags
+        return self._delegate_write(
+            self._metadata_storage.store_annotation, target, target_type, content, tags
         )
 
     def get_annotations(
@@ -44,7 +59,9 @@ class StorageDelegatesMixin:
         return self._metadata_storage.get_annotations(target, target_type, tags)
 
     def delete_annotation(self, annotation_id: int) -> bool:
-        return self._metadata_storage.delete_annotation(annotation_id)
+        return self._delegate_write(
+            self._metadata_storage.delete_annotation, annotation_id
+        )
 
     def update_annotation(
         self,
@@ -52,7 +69,9 @@ class StorageDelegatesMixin:
         content: str | None = None,
         tags: list[str] | None = None,
     ) -> bool:
-        return self._metadata_storage.update_annotation(annotation_id, content, tags)
+        return self._delegate_write(
+            self._metadata_storage.update_annotation, annotation_id, content, tags
+        )
 
     def search_annotations(
         self, query: str, target_type: str | None = None
@@ -65,7 +84,9 @@ class StorageDelegatesMixin:
         session_id: str | None = None,
         reason: str | None = None,
     ) -> int:
-        return self._metadata_storage.record_change(summary, session_id, reason)
+        return self._delegate_write(
+            self._metadata_storage.record_change, summary, session_id, reason
+        )
 
     def get_change_history(
         self, limit: int = 20, document_path: str | None = None
@@ -75,21 +96,23 @@ class StorageDelegatesMixin:
     def prune_history(
         self, max_age_seconds: float | None = None, max_entries: int | None = None
     ) -> int:
-        return self._metadata_storage.prune_history(max_age_seconds, max_entries)
+        return self._delegate_write(
+            self._metadata_storage.prune_history, max_age_seconds, max_entries
+        )
 
     # -- Symbols (SymbolStorage) ----------------------------------------------
 
     def store_symbols(self, symbols: Any) -> None:
-        self._symbol_storage.store_symbols(symbols)
+        self._delegate_write(self._symbol_storage.store_symbols, symbols)
 
     def store_edges(self, edges: Any) -> None:
-        self._symbol_storage.store_edges(edges)
+        self._delegate_write(self._symbol_storage.store_edges, edges)
 
     def clear_document_symbols(self, document_path: str) -> None:
-        self._symbol_storage.clear_document_symbols(document_path)
+        self._delegate_write(self._symbol_storage.clear_document_symbols, document_path)
 
     def clear_chunk_edges(self, chunk_ids: list[str]) -> None:
-        self._symbol_storage.clear_chunk_edges(chunk_ids)
+        self._delegate_write(self._symbol_storage.clear_chunk_edges, chunk_ids)
 
     def get_edge_symbol_names_for_chunks(self, chunk_ids: list[str]) -> set[str]:
         return self._symbol_storage.get_edge_symbol_names_for_chunks(chunk_ids)
@@ -98,13 +121,13 @@ class StorageDelegatesMixin:
         return self._symbol_storage.get_symbol_names_for_chunks(chunk_ids)
 
     def clear_chunk_symbols(self, chunk_ids: list[str]) -> None:
-        self._symbol_storage.clear_chunk_symbols(chunk_ids)
+        self._delegate_write(self._symbol_storage.clear_chunk_symbols, chunk_ids)
 
     def clear_all_symbols(self) -> None:
-        self._symbol_storage.clear_all_symbols()
+        self._delegate_write(self._symbol_storage.clear_all_symbols)
 
     def clear_all_edges(self) -> None:
-        self._symbol_storage.clear_all_edges()
+        self._delegate_write(self._symbol_storage.clear_all_edges)
 
     def get_all_symbols(self) -> list[dict[str, Any]]:
         return self._symbol_storage.get_all_symbols()
@@ -136,10 +159,14 @@ class StorageDelegatesMixin:
     def store_dynamic_symbols(
         self, symbols: list[dict[str, Any]], agent_id: str
     ) -> dict[str, Any]:
-        return self._symbol_storage.store_dynamic_symbols(symbols, agent_id)
+        return self._delegate_write(
+            self._symbol_storage.store_dynamic_symbols, symbols, agent_id
+        )
 
     def remove_dynamic_symbols(self, agent_id: str) -> dict[str, Any]:
-        return self._symbol_storage.remove_dynamic_symbols(agent_id)
+        return self._delegate_write(
+            self._symbol_storage.remove_dynamic_symbols, agent_id
+        )
 
     def get_dynamic_symbols(self, agent_id: str | None = None) -> list[dict[str, Any]]:
         return self._symbol_storage.get_dynamic_symbols(agent_id)
@@ -147,7 +174,9 @@ class StorageDelegatesMixin:
     # -- Sessions (SessionStorage) --------------------------------------------
 
     def create_session(self, session_id: str, agent_id: str | None = None) -> None:
-        self._session_storage.create_session(session_id, agent_id=agent_id)
+        self._delegate_write(
+            self._session_storage.create_session, session_id, agent_id=agent_id
+        )
 
     def get_session(self, session_id: str) -> dict[str, Any] | None:
         return self._session_storage.get_session(session_id)
@@ -161,7 +190,12 @@ class StorageDelegatesMixin:
         turn_count: int | None = None,
         total_tokens: int | None = None,
     ) -> None:
-        self._session_storage.update_session(session_id, turn_count, total_tokens)
+        self._delegate_write(
+            self._session_storage.update_session,
+            session_id,
+            turn_count,
+            total_tokens,
+        )
 
     def store_kv_state(
         self,
@@ -171,8 +205,13 @@ class StorageDelegatesMixin:
         kv_data: Any,
         relevance_score: float = 1.0,
     ) -> str:
-        return self._session_storage.store_kv_state(
-            session_id, chunk_id, turn_number, kv_data, relevance_score
+        return self._delegate_write(
+            self._session_storage.store_kv_state,
+            session_id,
+            chunk_id,
+            turn_number,
+            kv_data,
+            relevance_score,
         )
 
     def load_kv_state(
@@ -186,10 +225,14 @@ class StorageDelegatesMixin:
         return self._session_storage.get_session_chunks(session_id, turn_number)
 
     def rollback_session(self, session_id: str, target_turn: int) -> int:
-        return self._session_storage.rollback_session(session_id, target_turn)
+        return self._delegate_write(
+            self._session_storage.rollback_session, session_id, target_turn
+        )
 
     def prune_chunks(self, session_id: str, max_tokens: int) -> int:
-        return self._session_storage.prune_chunks(session_id, max_tokens)
+        return self._delegate_write(
+            self._session_storage.prune_chunks, session_id, max_tokens
+        )
 
     def record_search(
         self,
@@ -199,8 +242,13 @@ class StorageDelegatesMixin:
         files_checked: list[str],
         files_with_matches: list[str],
     ) -> None:
-        self._session_storage.record_search(
-            session_id, pattern, tool, files_checked, files_with_matches
+        self._delegate_write(
+            self._session_storage.record_search,
+            session_id,
+            pattern,
+            tool,
+            files_checked,
+            files_with_matches,
         )
 
     def get_search_history(self, session_id: str) -> list[dict[str, Any]]:
@@ -212,7 +260,12 @@ class StorageDelegatesMixin:
         document_path: str,
         chunk_ids: list[str],
     ) -> None:
-        self._session_storage.record_file_read(session_id, document_path, chunk_ids)
+        self._delegate_write(
+            self._session_storage.record_file_read,
+            session_id,
+            document_path,
+            chunk_ids,
+        )
 
     def get_session_read_files(self, session_id: str) -> list[dict[str, Any]]:
         return self._session_storage.get_session_read_files(session_id)
@@ -222,35 +275,49 @@ class StorageDelegatesMixin:
     def acquire_document_lock(
         self, document_path: str, agent_id: str, ttl: float = 300.0, force: bool = False
     ) -> dict[str, Any]:
-        return self._document_lock_storage.acquire_lock(
-            document_path, agent_id, ttl, force
+        return self._delegate_write(
+            self._document_lock_storage.acquire_lock,
+            document_path,
+            agent_id,
+            ttl,
+            force,
         )
 
     def refresh_document_lock(
         self, document_path: str, agent_id: str, ttl: float | None = None
     ) -> dict[str, Any]:
-        return self._document_lock_storage.refresh_lock(document_path, agent_id, ttl)
+        return self._delegate_write(
+            self._document_lock_storage.refresh_lock, document_path, agent_id, ttl
+        )
 
     def release_document_lock(
         self, document_path: str, agent_id: str
     ) -> dict[str, Any]:
-        return self._document_lock_storage.release_lock(document_path, agent_id)
+        return self._delegate_write(
+            self._document_lock_storage.release_lock, document_path, agent_id
+        )
 
     def get_document_lock_status(self, document_path: str) -> dict[str, Any]:
         return self._document_lock_storage.get_lock_status(document_path)
 
     def release_agent_locks(self, agent_id: str) -> dict[str, Any]:
-        return self._document_lock_storage.release_agent_locks(agent_id)
+        return self._delegate_write(
+            self._document_lock_storage.release_agent_locks, agent_id
+        )
 
     def check_and_increment_doc_version(
         self, document_path: str, expected_version: int
     ) -> dict[str, Any]:
-        return self._document_lock_storage.check_and_increment_version(
-            document_path, expected_version
+        return self._delegate_write(
+            self._document_lock_storage.check_and_increment_version,
+            document_path,
+            expected_version,
         )
 
     def increment_doc_version(self, document_path: str) -> int:
-        return self._document_lock_storage.increment_version(document_path)
+        return self._delegate_write(
+            self._document_lock_storage.increment_version, document_path
+        )
 
     def get_document_version(self, document_path: str) -> int | None:
         return self._document_lock_storage.get_version(document_path)
@@ -263,8 +330,13 @@ class StorageDelegatesMixin:
         conflict_type: str,
         **kwargs: Any,
     ) -> int | None:
-        return self._document_lock_storage.record_conflict(
-            document_path, agent_a, agent_b, conflict_type, **kwargs
+        return self._delegate_write(
+            self._document_lock_storage.record_conflict,
+            document_path,
+            agent_a,
+            agent_b,
+            conflict_type,
+            **kwargs,
         )
 
     def get_conflicts(
@@ -278,10 +350,14 @@ class StorageDelegatesMixin:
     def prune_conflicts(
         self, max_age_seconds: float | None = None, max_entries: int | None = None
     ) -> int:
-        return self._document_lock_storage.prune_conflicts(max_age_seconds, max_entries)
+        return self._delegate_write(
+            self._document_lock_storage.prune_conflicts,
+            max_age_seconds,
+            max_entries,
+        )
 
     def reap_expired_locks(self) -> dict[str, Any]:
-        return self._document_lock_storage.reap_expired_locks()
+        return self._delegate_write(self._document_lock_storage.reap_expired_locks)
 
     def get_lock_stats(self) -> dict[str, Any]:
         return self._document_lock_storage.get_lock_stats()

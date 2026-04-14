@@ -34,6 +34,7 @@ from stele_context.metadata_storage import MetadataStorage
 from stele_context.session_storage import SessionStorage
 from stele_context.storage_delegates import StorageDelegatesMixin
 from stele_context.symbol_storage import SymbolStorage
+from stele_context.storage_writer import WriterQueue
 
 from stele_context.chunkers.numpy_compat import sig_to_bytes, sig_from_bytes
 
@@ -72,6 +73,9 @@ class StorageBackend(StorageDelegatesMixin):
         self._migrate_database()
         self._pool = init_pool(self.db_path)
 
+        # Single-writer queue to eliminate SQLite write contention
+        self._writer = WriterQueue(self.db_path)
+
         # Initialize storage delegates
         self._session_storage = SessionStorage(self.db_path, self.kv_dir)
         self._metadata_storage = MetadataStorage(self.db_path)
@@ -88,6 +92,9 @@ class StorageBackend(StorageDelegatesMixin):
 
     def close(self) -> None:
         """Close all pooled connections and checkpoint WAL. Safe to call multiple times."""
+        if self._writer is not None:
+            self._writer.close()
+            self._writer = None  # type: ignore[assignment]
         if self._pool is not None:
             try:
                 conn = self._pool.get()
@@ -95,6 +102,34 @@ class StorageBackend(StorageDelegatesMixin):
             except Exception:
                 pass
             self._pool.close_all()
+
+    def vacuum_db(self) -> dict[str, Any]:
+        """Run WAL checkpoint and VACUUM to reclaim space and repair mild WAL rot."""
+
+        def _vacuum(conn: sqlite3.Connection) -> dict[str, Any]:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("VACUUM")
+            cursor = conn.execute("PRAGMA page_count")
+            page_count = cursor.fetchone()[0]
+            cursor = conn.execute("PRAGMA page_size")
+            page_size = cursor.fetchone()[0]
+            return {
+                "checkpointed": True,
+                "vacuumed": True,
+                "estimated_size_bytes": page_count * page_size,
+            }
+
+        if self._writer is not None:
+            return self._writer.submit(_vacuum)
+        with connect(self.db_path) as conn:
+            return _vacuum(conn)
+
+    def _write(self, func, *args, **kwargs):
+        """Execute a write callable through the single-writer queue."""
+        if self._writer is not None:
+            return self._writer.submit(func, *args, **kwargs)
+        with connect(self.db_path) as conn:
+            return func(conn, *args, **kwargs)
 
     # -- Core chunk operations ------------------------------------------------
 
@@ -111,18 +146,15 @@ class StorageBackend(StorageDelegatesMixin):
     ) -> None:
         """Store chunk metadata (and optionally content) in database."""
         now = time.time()
-
         sig_bytes = sig_to_bytes(semantic_signature)
 
-        with connect(self.db_path) as conn:
-            # Get current version
+        def _write(conn: sqlite3.Connection) -> None:
             cursor = conn.execute(
                 "SELECT version FROM chunks WHERE chunk_id = ?", (chunk_id,)
             )
             row = cursor.fetchone()
             version = (row[0] + 1) if row else 1
 
-            # Store current version in history
             if row:
                 conn.execute(
                     """
@@ -130,12 +162,9 @@ class StorageBackend(StorageDelegatesMixin):
                     (chunk_id, version, content_hash, semantic_signature, created_at)
                     SELECT chunk_id, version, content_hash, semantic_signature, created_at
                     FROM chunks WHERE chunk_id = ?
-                """,
+                    """,
                     (chunk_id,),
                 )
-
-            # Update or insert chunk (preserve access_count on update)
-            if row:
                 conn.execute(
                     """
                     UPDATE chunks SET
@@ -143,7 +172,7 @@ class StorageBackend(StorageDelegatesMixin):
                         start_pos = ?, end_pos = ?, token_count = ?,
                         last_accessed = ?, version = ?, content = ?
                     WHERE chunk_id = ?
-                """,
+                    """,
                     (
                         document_path,
                         content_hash,
@@ -165,7 +194,7 @@ class StorageBackend(StorageDelegatesMixin):
                      start_pos, end_pos, token_count, created_at, last_accessed,
                      access_count, version, content)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-                """,
+                    """,
                     (
                         chunk_id,
                         document_path,
@@ -180,6 +209,12 @@ class StorageBackend(StorageDelegatesMixin):
                         content,
                     ),
                 )
+
+        if self._writer is not None:
+            self._writer.submit(_write)
+        else:
+            with connect(self.db_path) as conn:
+                _write(conn)
 
     def get_chunk(self, chunk_id: str) -> dict[str, Any] | None:
         """Retrieve chunk metadata by ID."""
@@ -323,7 +358,8 @@ class StorageBackend(StorageDelegatesMixin):
         that would be lost with INSERT OR REPLACE.
         """
         now = time.time()
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
             conn.execute(
                 """
                 INSERT INTO documents
@@ -336,7 +372,7 @@ class StorageBackend(StorageDelegatesMixin):
                     indexed_at = excluded.indexed_at,
                     last_modified = excluded.last_modified,
                     file_size = excluded.file_size
-            """,
+                """,
                 (
                     document_path,
                     content_hash,
@@ -346,6 +382,8 @@ class StorageBackend(StorageDelegatesMixin):
                     file_size,
                 ),
             )
+
+        self._write(_do_write)
 
     def get_document(self, document_path: str) -> dict[str, Any] | None:
         """Get document indexing information."""
@@ -374,13 +412,16 @@ class StorageBackend(StorageDelegatesMixin):
     ) -> bool:
         """Store an agent-supplied semantic summary and its computed signature."""
         sig_bytes = sig_to_bytes(agent_signature)
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
             cursor = conn.execute(
                 "UPDATE chunks SET semantic_summary = ?, agent_signature = ? "
                 "WHERE chunk_id = ?",
                 (summary, sig_bytes, chunk_id),
             )
             return cursor.rowcount > 0
+
+        return self._write(_do_write)
 
     def bulk_update_summaries(
         self,
@@ -390,13 +431,16 @@ class StorageBackend(StorageDelegatesMixin):
     ) -> int:
         """Batch-update semantic_summary and agent_signature for multiple chunks."""
         sig_bytes = sig_to_bytes(agent_signature)
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
             conn.executemany(
                 "UPDATE chunks SET semantic_summary = ?, agent_signature = ? "
                 "WHERE chunk_id = ?",
                 [(summary, sig_bytes, cid) for cid in chunk_ids],
             )
             return len(chunk_ids)
+
+        return self._write(_do_write)
 
     def store_agent_signature(
         self,
@@ -405,21 +449,25 @@ class StorageBackend(StorageDelegatesMixin):
     ) -> bool:
         """Store a raw agent-supplied embedding vector."""
         sig_bytes = sig_to_bytes(agent_signature)
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
             cursor = conn.execute(
                 "UPDATE chunks SET agent_signature = ? WHERE chunk_id = ?",
                 (sig_bytes, chunk_id),
             )
             return cursor.rowcount > 0
 
+        return self._write(_do_write)
+
     def bulk_store_agent_signatures(
         self,
         embeddings: dict[str, Any],
     ) -> dict[str, Any]:
         """Batch-store raw embedding vectors for multiple chunk IDs."""
-        stored = 0
-        errors: list[str] = []
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
+            stored = 0
+            errors: list[str] = []
             for cid, sig in embeddings.items():
                 sig_bytes = sig_to_bytes(sig)
                 cur = conn.execute(
@@ -430,22 +478,28 @@ class StorageBackend(StorageDelegatesMixin):
                     stored += 1
                 else:
                     errors.append(cid)
-        return {"stored": stored, "errors": errors, "total": len(embeddings)}
+            return {"stored": stored, "errors": errors, "total": len(embeddings)}
+
+        return self._write(_do_write)
 
     def store_chunk_agent_notes(self, chunk_id: str, notes: str | None) -> bool:
         """Store optional JSON or plain-text notes on a chunk (agent scratchpad)."""
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
             cur = conn.execute(
                 "UPDATE chunks SET agent_notes = ? WHERE chunk_id = ?",
                 (notes, chunk_id),
             )
             return cur.rowcount > 0
 
+        return self._write(_do_write)
+
     def bulk_store_chunk_agent_notes(self, notes: dict[str, str]) -> dict[str, Any]:
         """Batch-set ``agent_notes`` for multiple chunk IDs."""
-        stored = 0
-        errors: list[str] = []
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
+            stored = 0
+            errors: list[str] = []
             for cid, text in notes.items():
                 cur = conn.execute(
                     "UPDATE chunks SET agent_notes = ? WHERE chunk_id = ?",
@@ -455,7 +509,9 @@ class StorageBackend(StorageDelegatesMixin):
                     stored += 1
                 else:
                     errors.append(cid)
-        return {"stored": stored, "errors": errors, "total": len(notes)}
+            return {"stored": stored, "errors": errors, "total": len(notes)}
+
+        return self._write(_do_write)
 
     def create_memory_chunk(
         self,
@@ -484,13 +540,12 @@ class StorageBackend(StorageDelegatesMixin):
 
         now = _time.time()
         content_hash = hashlib.sha256(content.encode()).digest()
-        # Zero signature as placeholder (Tier 1 is not computed for memory chunks)
         zero_sig = sig_to_bytes([0.0] * 128)
         sig_bytes = sig_to_bytes(agent_signature)
-        token_count = len(content) // 4  # rough estimate
+        token_count = len(content) // 4
         dp = document_path or f"memory:{chunk_id}"
 
-        with connect(self.db_path) as conn:
+        def _do_write(conn):
             cursor = conn.execute(
                 """
                 INSERT OR IGNORE INTO chunks
@@ -513,6 +568,8 @@ class StorageBackend(StorageDelegatesMixin):
                 ),
             )
             return cursor.rowcount > 0
+
+        return self._write(_do_write)
 
     def get_agent_signature(self, chunk_id: str) -> Any | None:
         """Get agent-supplied signature for a chunk, if any."""
@@ -579,26 +636,35 @@ class StorageBackend(StorageDelegatesMixin):
 
     def set_staleness(self, chunk_id: str, score: float) -> None:
         """Set staleness score for a chunk."""
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
             conn.execute(
                 "UPDATE chunks SET staleness_score = ? WHERE chunk_id = ?",
                 (score, chunk_id),
             )
 
+        self._write(_do_write)
+
     def set_staleness_batch(self, updates: list[tuple]) -> None:
         """Set staleness for multiple chunks. Each: (score, chunk_id)."""
         if not updates:
             return
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
             conn.executemany(
                 "UPDATE chunks SET staleness_score = ? WHERE chunk_id = ?",
                 updates,
             )
 
+        self._write(_do_write)
+
     def clear_staleness(self) -> None:
         """Reset all staleness scores to 0."""
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
             conn.execute("UPDATE chunks SET staleness_score = 0.0")
+
+        self._write(_do_write)
 
     def get_stale_chunks(self, threshold: float = 0.3) -> list[dict[str, Any]]:
         """Get chunks with staleness_score >= threshold."""
@@ -678,12 +744,12 @@ class StorageBackend(StorageDelegatesMixin):
         """Delete chunks and their related data. Returns count deleted."""
         if not chunk_ids:
             return 0
-        # Clean up symbols and edges first
         self._symbol_storage.clear_chunk_symbols(chunk_ids)
         self._symbol_storage.clear_chunk_edges(chunk_ids)
 
         placeholders = ",".join("?" * len(chunk_ids))
-        with connect(self.db_path) as conn:
+
+        def _do_write(conn):
             conn.execute(
                 f"DELETE FROM session_chunks WHERE chunk_id IN ({placeholders})",
                 chunk_ids,
@@ -703,48 +769,63 @@ class StorageBackend(StorageDelegatesMixin):
             )
             return cursor.rowcount
 
+        return self._write(_do_write)
+
     def remove_document(self, document_path: str) -> dict[str, Any]:
         """Remove a document and all its chunks, annotations, and history."""
         doc = self.get_document(document_path)
         if doc is None:
             return {"removed": False}
 
-        # Get chunk IDs before deleting
         chunks = self.get_document_chunks(document_path)
         chunk_ids = [c["chunk_id"] for c in chunks]
-
-        # Clean up document-level symbols (chunk symbols handled by delete_chunks)
         self._symbol_storage.clear_document_symbols(document_path)
 
-        with connect(self.db_path) as conn:
-            # Delete document-level annotations
+        def _do_write(conn):
             cursor = conn.execute(
                 "DELETE FROM annotations WHERE target = ? AND target_type = 'document'",
                 (document_path,),
             )
             annotations_removed = cursor.rowcount
-
-        # Delegate chunk deletion (handles session_chunks, history, chunk annotations)
-        chunks_removed = self.delete_chunks(chunk_ids)
-
-        with connect(self.db_path) as conn:
+            placeholders = ",".join("?" * len(chunk_ids))
+            if chunk_ids:
+                conn.execute(
+                    f"DELETE FROM session_chunks WHERE chunk_id IN ({placeholders})",
+                    chunk_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM chunk_history WHERE chunk_id IN ({placeholders})",
+                    chunk_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM annotations WHERE target IN ({placeholders}) AND target_type = 'chunk'",
+                    chunk_ids,
+                )
+                cur = conn.execute(
+                    f"DELETE FROM chunks WHERE chunk_id IN ({placeholders})",
+                    chunk_ids,
+                )
+                chunks_removed = cur.rowcount
+            else:
+                chunks_removed = 0
             conn.execute(
                 "DELETE FROM documents WHERE document_path = ?", (document_path,)
             )
+            return {
+                "removed": True,
+                "chunk_ids": chunk_ids,
+                "chunks_removed": chunks_removed,
+                "annotations_removed": annotations_removed,
+            }
 
-        return {
-            "removed": True,
-            "chunk_ids": chunk_ids,
-            "chunks_removed": chunks_removed,
-            "annotations_removed": annotations_removed,
-        }
+        return self._write(_do_write)
 
     def clear_all(self) -> None:
         """Clear all stored data."""
         self._symbol_storage.clear_all_symbols()
         self._symbol_storage.clear_all_edges()
 
-        with connect(self.db_path) as conn:
+        def _do_write(conn):
             conn.execute("DELETE FROM session_chunks")
             conn.execute("DELETE FROM sessions")
             conn.execute("DELETE FROM chunk_history")
@@ -753,6 +834,8 @@ class StorageBackend(StorageDelegatesMixin):
             conn.execute("DELETE FROM annotations")
             conn.execute("DELETE FROM change_history")
             conn.execute("DELETE FROM document_conflicts")
+
+        self._write(_do_write)
 
         for kv_file in self.kv_dir.rglob("*.kv"):
             kv_file.unlink()

@@ -7,13 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-04-15
+
 ### Added
+- **`WriterQueue` single-writer queue** — New zero-dependency `stele_context/storage_writer.py` serializes all SQLite write operations through a single daemon thread, eliminating "unable to open database file" errors under heavy concurrent load.
+- **`sqlite_retry` decorator** — `connection_pool.py` now provides a zero-dependency retry decorator with exponential backoff for SQLite busy/locked errors.
 - **`impact_radius(..., direction=...)`** — New `direction` parameter supporting `dependents` (default, incoming edges), `dependencies` (outgoing edges), and `both`. Also adds hybrid seeding for `document_path` mode: when the symbol edge graph is sparse for base classes, raw symbol references are used as a fallback so high fan-in files no longer report zero affected chunks.
 - **`coupling(..., mode="co_consumers")`** — New `co_consumers` mode that detects files co-imported or co-referenced by the same consumers as the target file, catching tight coupling invisible to shared-outgoing-edge analysis.
 - **`working_tree` auto-indexing** — `agent_grep`, `search_text`, `search`, and `query` now accept `working_tree=True` to auto-index modified and untracked files from the git working tree before searching.
 - **`stale_chunks` guidance** — When many files are stale at the default threshold, the response now includes guidance suggesting `threshold=0.5` or `0.64` for active codebases.
 
+### Changed
+- **Storage write paths refactored** — `storage.py` and `storage_delegates.py` now route all mutations through the single-writer queue. Reads continue to use the existing connection pool/context manager, preserving SQLite WAL concurrent-reader behavior.
+- **WAL auto-checkpoint tuning** — `PRAGMA wal_autocheckpoint=1000` added to writer and schema connections to reduce WAL growth under write-heavy workloads.
+
 ### Fixed
+- **AttributeError in storage refactor** — Restored the `_write()` helper on `StorageBackend` to bridge legacy write-method calls to the new `WriterQueue`, fixing test regressions introduced during the partial refactor.
 - **SQLite stability** — Increased connection timeout to 30 seconds in `ConnectionPool` and fallback `sqlite3.connect()` calls to reduce "unable to open database file" errors under concurrent load.
 - **`agent_grep` database error handling** — Catches SQLite errors gracefully and returns actionable guidance to run `rebuild_symbols` or `detect_changes`.
 - **`query()` text match integration** — Fixed broken `agent_grep` result parsing that was looking for non-existent `results` and `chunk_id` keys. Errors from sub-searches are now surfaced in `errors` instead of being silently swallowed.

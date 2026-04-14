@@ -54,6 +54,7 @@ def connect(db_path: Any) -> Any:
         conn = sqlite3.connect(db_path, timeout=30.0)
         conn.row_factory = None  # reset to default for consistency
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA wal_autocheckpoint=1000")
         try:
             yield conn
             conn.commit()
