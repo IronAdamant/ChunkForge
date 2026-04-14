@@ -33,6 +33,7 @@ class SymbolStorage:
                     chunk_id TEXT NOT NULL,
                     document_path TEXT NOT NULL,
                     line_number INTEGER,
+                    container TEXT,
                     FOREIGN KEY (chunk_id) REFERENCES chunks(chunk_id)
                 )
             """)
@@ -69,6 +70,12 @@ class SymbolStorage:
                 "CREATE INDEX IF NOT EXISTS idx_edges_symbol "
                 "ON symbol_edges(symbol_name)"
             )
+            # Migrate existing databases: add container column if missing
+            cols = {
+                row[1] for row in conn.execute("PRAGMA table_info(symbols)").fetchall()
+            }
+            if "container" not in cols:
+                conn.execute("ALTER TABLE symbols ADD COLUMN container TEXT")
 
     # -- Bulk operations -----------------------------------------------------
 
@@ -78,10 +85,18 @@ class SymbolStorage:
             return
         with connect(self.db_path) as conn:
             conn.executemany(
-                "INSERT INTO symbols (name, kind, role, chunk_id, document_path, line_number) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO symbols (name, kind, role, chunk_id, document_path, line_number, container) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (s.name, s.kind, s.role, s.chunk_id, s.document_path, s.line_number)
+                    (
+                        s.name,
+                        s.kind,
+                        s.role,
+                        s.chunk_id,
+                        s.document_path,
+                        s.line_number,
+                        getattr(s, "container", None),
+                    )
                     for s in symbols
                 ],
             )
@@ -121,6 +136,32 @@ class SymbolStorage:
                 f"OR target_chunk_id IN ({placeholders})",
                 chunk_ids + chunk_ids,
             )
+
+    def get_edge_symbol_names_for_chunks(self, chunk_ids: list[str]) -> set[str]:
+        """Return distinct symbol names from edges involving the given chunks."""
+        if not chunk_ids:
+            return set()
+        placeholders = ",".join("?" * len(chunk_ids))
+        with connect(self.db_path) as conn:
+            rows = conn.execute(
+                f"SELECT DISTINCT symbol_name FROM symbol_edges "
+                f"WHERE source_chunk_id IN ({placeholders}) "
+                f"OR target_chunk_id IN ({placeholders})",
+                chunk_ids + chunk_ids,
+            ).fetchall()
+        return {r[0] for r in rows}
+
+    def get_symbol_names_for_chunks(self, chunk_ids: list[str]) -> set[str]:
+        """Return distinct symbol names defined or referenced in the given chunks."""
+        if not chunk_ids:
+            return set()
+        placeholders = ",".join("?" * len(chunk_ids))
+        with connect(self.db_path) as conn:
+            rows = conn.execute(
+                f"SELECT DISTINCT name FROM symbols WHERE chunk_id IN ({placeholders})",
+                chunk_ids,
+            ).fetchall()
+        return {r[0] for r in rows}
 
     def clear_chunk_symbols(self, chunk_ids: list[str]) -> None:
         """Remove all symbols for the given chunk IDs."""
@@ -306,12 +347,13 @@ class SymbolStorage:
                 continue
 
             chunk_id = f"runtime:{agent_id}:{name}"
+            container = sym.get("container")
             with connect(self.db_path) as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO symbols "
-                    "(name, kind, role, chunk_id, document_path, line_number) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (name, kind, role, chunk_id, doc_path, line_number),
+                    "(name, kind, role, chunk_id, document_path, line_number, container) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (name, kind, role, chunk_id, doc_path, line_number, container),
                 )
             stored += 1
 

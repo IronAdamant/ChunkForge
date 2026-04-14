@@ -24,6 +24,7 @@ class Symbol:
     chunk_id: str
     document_path: str
     line_number: int | None = None
+    container: str | None = None  # e.g. "ClassName" or "ClassName.methodName"
 
 
 # -- Python regex fallback ---------------------------------------------------
@@ -75,16 +76,25 @@ def extract_python_regex(content: str, doc_path: str, chunk_id: str) -> list[Sym
 def extract_javascript(content: str, doc_path: str, chunk_id: str) -> list[Symbol]:
     """Extract symbols from JavaScript/TypeScript.
 
-    Handles multi-line ``const``/``let``/``var`` declarations (e.g.
-    ``const x = new Foo(...)\\n  arg)\\n;``) by deferring emission when the
-    RHS opens a paren or brace, then emitting once the expression is balanced.
-    This prevents continuation lines like ``  new Something(...)`` from being
-    falsely matched as class methods.
+    Handles multi-line ``const``/``let``/``var`` declarations and tracks
+    scope containers (class / function names) so that symbols carry
+    ``container`` information for more precise coupling and impact analysis.
     """
     symbols: list[Symbol] = []
 
+    def _emit(
+        name: str,
+        kind: str,
+        role: str,
+        line: int,
+        container: str | None = None,
+    ) -> None:
+        symbols.append(Symbol(name, kind, role, chunk_id, doc_path, line, container))
+
+    def _container() -> str | None:
+        return ".".join(s[0] for s in scope_stack) if scope_stack else None
+
     # Pre-pass: destructured module.exports = { X, Y, Alias: Original, ...require('./x') }
-    # [^}] matches across newlines, so this handles multiline blocks.
     for m_dexp in re.finditer(r"module\.exports\s*=\s*\{([^}]+)\}", content):
         inner = m_dexp.group(1)
         exp_line = content[: m_dexp.start()].count("\n") + 1
@@ -92,253 +102,135 @@ def extract_javascript(content: str, doc_path: str, chunk_id: str) -> list[Symbo
             entry_str = entry_str.strip()
             if not entry_str:
                 continue
-            # Spread require: ...require('./path')
             m_spread = re.match(
                 r"\.\.\.\s*require\(\s*['\"]([^'\"]+)['\"]\s*\)", entry_str
             )
             if m_spread:
-                symbols.append(
-                    Symbol(
-                        m_spread.group(1),
-                        "module",
-                        "reference",
-                        chunk_id,
-                        doc_path,
-                        exp_line,
-                    )
-                )
+                _emit(m_spread.group(1), "module", "reference", exp_line)
                 continue
-            # Alias: Original (renamed re-export)
             m_aliased = re.match(r"(\w+)\s*:\s*(\w+)", entry_str)
             if m_aliased:
-                symbols.append(
-                    Symbol(
-                        m_aliased.group(1),
-                        "variable",
-                        "definition",
-                        chunk_id,
-                        doc_path,
-                        exp_line,
-                    )
-                )
-                symbols.append(
-                    Symbol(
-                        m_aliased.group(2),
-                        "variable",
-                        "reference",
-                        chunk_id,
-                        doc_path,
-                        exp_line,
-                    )
-                )
+                _emit(m_aliased.group(1), "variable", "definition", exp_line)
+                _emit(m_aliased.group(2), "variable", "reference", exp_line)
                 continue
-            # Simple name re-export: X  (definition already captured by class/function pattern)
             m_simple = re.match(r"(\w+)\s*$", entry_str)
             if m_simple:
-                symbols.append(
-                    Symbol(
-                        m_simple.group(1),
-                        "variable",
-                        "reference",
-                        chunk_id,
-                        doc_path,
-                        exp_line,
-                    )
-                )
+                _emit(m_simple.group(1), "variable", "reference", exp_line)
 
-    # State for multi-line declaration accumulation.
-    # When a const/let/var starts but the RHS opens a paren/brace (e.g.
-    # ``const x = new Foo(`` or ``const x = {``), we defer the symbol emission
-    # until paren+brace depth returns to 0.
+    # State
     pending_name: str = ""
     pending_line: int = 0
-    depth: int = 0
+    paren_brace_depth: int = 0
+    brace_depth: int = 0
+    scope_stack: list[tuple[str, int]] = []  # (name, brace_depth_at_entry)
 
     for i, line in enumerate(content.splitlines(), 1):
         stripped = line.strip()
 
-        # -- Accumulation: inside a multi-line declaration --------------------
+        # -- Multi-line declaration accumulation ------------------------------
         if pending_name:
-            # Count paren/brace changes in the full (unstripped) line.
             for ch in line:
                 if ch == "(" or ch == "{":
-                    depth += 1
+                    paren_brace_depth += 1
                 elif ch == ")" or ch == "}":
-                    depth -= 1
-
-            if depth <= 0:
-                # Balanced or closed — emit the pending variable symbol.
-                symbols.append(
-                    Symbol(
-                        pending_name,
-                        "variable",
-                        "definition",
-                        chunk_id,
-                        doc_path,
-                        pending_line,
-                    )
+                    paren_brace_depth -= 1
+            if paren_brace_depth <= 0:
+                _emit(
+                    pending_name, "variable", "definition", pending_line, _container()
                 )
                 pending_name = ""
-                depth = 0
-                # Fall through so this line is also processed normally
-                # (e.g. the `}` of an object literal).
+                paren_brace_depth = 0
 
-        # -- Per-line pattern matching ----------------------------------------
-        # Function definitions
+        # -- Scope exit: pop scopes whose braces closed on previous lines -----
+        while scope_stack and scope_stack[-1][1] >= brace_depth:
+            scope_stack.pop()
+
+        # -- Definitions ------------------------------------------------------
         m = re.match(r"(?:export\s+)?(?:async\s+)?function\s+(\w+)", stripped)
         if m:
-            symbols.append(
-                Symbol(m.group(1), "function", "definition", chunk_id, doc_path, i)
-            )
+            _emit(m.group(1), "function", "definition", i, _container())
+            scope_stack.append((m.group(1), brace_depth))
 
-        # Class definitions
         m = re.match(r"(?:export\s+)?(?:abstract\s+)?class\s+(\w+)", stripped)
         if m:
-            symbols.append(
-                Symbol(m.group(1), "class", "definition", chunk_id, doc_path, i)
-            )
+            _emit(m.group(1), "class", "definition", i, _container())
+            scope_stack.append((m.group(1), brace_depth))
 
-        # module.exports = ClassName / module.exports = new ClassName() / module.exports = { ... }
-        # Emits the RHS class/object name as a definition so find_references
-        # can resolve imports that reference the exported singleton.
         m_exp = re.match(r"module\.exports\s*=\s*(?:new\s+)?(\w+)", stripped)
         if m_exp:
-            rhs_name = m_exp.group(1)
-            symbols.append(
-                Symbol(rhs_name, "class", "definition", chunk_id, doc_path, i)
-            )
+            _emit(m_exp.group(1), "class", "definition", i)
 
-        # Non-destructured require: const X = require('path')
-        # Must be checked before general variable pattern to avoid
-        # classifying the variable name as a definition instead of reference.
         m_req = re.match(
             r"(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*require\(\s*['\"]([^'\"]+)['\"]\s*\)",
             stripped,
         )
         if m_req:
             req_path = m_req.group(2)
-            # Local requires: emit import reference for variable name so
-            # find_references/impact_radius can trace the dependency.
-            # External requires (no ./ or ../ prefix): skip import ref to
-            # avoid spurious edges between files importing the same package.
             if req_path.startswith((".", "/")):
-                symbols.append(
-                    Symbol(m_req.group(1), "import", "reference", chunk_id, doc_path, i)
-                )
+                _emit(m_req.group(1), "import", "reference", i, _container())
         else:
-            # Variable/const definitions (including arrow functions).
-            # If the RHS opens a paren/brace, defer emission until balanced.
             m_var = re.match(r"(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=", stripped)
             if m_var:
                 rhs = stripped[stripped.index("=") + 1 :]
                 if "(" in rhs or "{" in rhs:
                     pending_name = m_var.group(1)
                     pending_line = i
-                    # Count parens/braces in the current line.
-                    depth = 0
+                    paren_brace_depth = 0
                     for ch in line:
                         if ch == "(" or ch == "{":
-                            depth += 1
+                            paren_brace_depth += 1
                         elif ch == ")" or ch == "}":
-                            depth -= 1
-                    # If depth already ≤ 0 (immediate closing), emit now.
-                    if depth <= 0:
-                        symbols.append(
-                            Symbol(
-                                pending_name,
-                                "variable",
-                                "definition",
-                                chunk_id,
-                                doc_path,
-                                pending_line,
-                            )
-                        )
-                        pending_name = ""
-                        depth = 0
-                else:
-                    symbols.append(
-                        Symbol(
-                            m_var.group(1),
+                            paren_brace_depth -= 1
+                    if paren_brace_depth <= 0:
+                        _emit(
+                            pending_name,
                             "variable",
                             "definition",
-                            chunk_id,
-                            doc_path,
-                            i,
+                            pending_line,
+                            _container(),
                         )
-                    )
-                    # Alias tracking: const Alias = OriginalClass
-                    # Emit the RHS bare identifier as a reference so edges
-                    # connect the alias to the original definition.
+                        pending_name = ""
+                        paren_brace_depth = 0
+                else:
+                    _emit(m_var.group(1), "variable", "definition", i, _container())
                     rhs_ident = rhs.strip().rstrip(";").strip()
                     m_rhs = re.match(r"^(\w+)$", rhs_ident)
                     if m_rhs and m_rhs.group(1) != m_var.group(1):
-                        symbols.append(
-                            Symbol(
-                                m_rhs.group(1),
-                                "variable",
-                                "reference",
-                                chunk_id,
-                                doc_path,
-                                i,
-                            )
-                        )
+                        _emit(m_rhs.group(1), "variable", "reference", i, _container())
 
-        # Class method definitions (indented, no function keyword).
-        # Skip when inside a multi-line declaration — continuation lines
-        # like ``  new Foo(...)`` or ``  await something()`` would otherwise
-        # be falsely matched as class methods.
         if not pending_name:
             m = re.match(r"\s+(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{", line)
             if m and not re.match(
                 r"\s*(if|for|while|switch|catch|function|return)\b", line
             ):
-                symbols.append(
-                    Symbol(m.group(1), "function", "definition", chunk_id, doc_path, i)
-                )
+                _emit(m.group(1), "function", "definition", i, _container())
+                scope_stack.append((m.group(1), brace_depth))
 
-        # Interface/type definitions (TS)
         m = re.match(r"(?:export\s+)?(?:interface|type)\s+(\w+)", stripped)
         if m:
-            symbols.append(
-                Symbol(m.group(1), "class", "definition", chunk_id, doc_path, i)
-            )
+            _emit(m.group(1), "class", "definition", i, _container())
 
-        # ES6 imports
-        m = re.match(r"import\s+(.+?)\s+from\s+['\"]([^'\"]+)['\"]", stripped)
-        if m:
-            symbols.append(
-                Symbol(m.group(2), "module", "reference", chunk_id, doc_path, i)
-            )
-            for name in re.findall(r"\b(\w+)\b", m.group(1)):
+        # -- References -------------------------------------------------------
+        m_imp = re.match(r"import\s+(.+?)\s+from\s+['\"]([^'\"]+)['\"]", stripped)
+        if m_imp:
+            _emit(m_imp.group(2), "module", "reference", i, _container())
+            for name in re.findall(r"\b(\w+)\b", m_imp.group(1)):
                 if name not in ("import", "as", "default", "type", "from"):
-                    symbols.append(
-                        Symbol(name, "import", "reference", chunk_id, doc_path, i)
-                    )
+                    _emit(name, "import", "reference", i, _container())
 
-        # Destructured require: const { a, b } = require('pkg')
-        m = re.match(
+        m_dreq = re.match(
             r"(?:const|let|var)\s+\{([^}]+)\}\s*=\s*require\(['\"]([^'\"]+)['\"]\)",
             stripped,
         )
-        if m:
-            symbols.append(
-                Symbol(m.group(2), "module", "reference", chunk_id, doc_path, i)
-            )
-            for name in re.findall(r"\b(\w+)\b", m.group(1)):
+        if m_dreq:
+            _emit(m_dreq.group(2), "module", "reference", i, _container())
+            for name in re.findall(r"\b(\w+)\b", m_dreq.group(1)):
                 if name != "as":
-                    symbols.append(
-                        Symbol(name, "import", "reference", chunk_id, doc_path, i)
-                    )
+                    _emit(name, "import", "reference", i, _container())
 
-        # require()
         for m in re.finditer(r"require\(['\"]([^'\"]+)['\"]\)", stripped):
-            symbols.append(
-                Symbol(m.group(1), "module", "reference", chunk_id, doc_path, i)
-            )
+            _emit(m.group(1), "module", "reference", i, _container())
 
-        # Function references: both bare calls (validatePositiveInt()) and
-        # method calls (obj.method()).  This ensures test files and internal
-        # call sites are linked for find_references/impact_radius.
         _CALL_SKIP_WORDS = {
             "if",
             "else",
@@ -371,94 +263,45 @@ def extract_javascript(content: str, doc_path: str, chunk_id: str) -> list[Symbo
             "let",
             "var",
         }
-        # Unified extractor: group 1 = method call (after dot),
-        # group 2 = bare function call.
         for m in re.finditer(r"(?:\.(\w+)|(?:^|[^\.\w])(\w+))\s*\(", stripped):
             func_name = m.group(1) or m.group(2)
             if func_name and func_name not in _CALL_SKIP_WORDS:
-                # Skip if this looks like a class method definition on the same line.
-                # Heuristic: the original line contains the func name followed by
-                # "() {" somewhere — but since we're already in the reference pass,
-                # we only need to avoid obvious false positives.  The _CALL_SKIP_WORDS
-                # set catches most keywords.
-                symbols.append(
-                    Symbol(
-                        func_name,
-                        "function",
-                        "reference",
-                        chunk_id,
-                        doc_path,
-                        i,
-                    )
-                )
+                _emit(func_name, "function", "reference", i, _container())
 
-        # new ClassName() references — constructor calls in tests and app code.
         for m in re.finditer(r"new\s+(\w+)", stripped):
             class_name = m.group(1)
             if class_name not in _CALL_SKIP_WORDS:
-                symbols.append(
-                    Symbol(
-                        class_name,
-                        "class",
-                        "reference",
-                        chunk_id,
-                        doc_path,
-                        i,
-                    )
-                )
+                _emit(class_name, "class", "reference", i, _container())
 
-        # DOM API -- cross-language HTML/CSS references
+        # DOM API
         for m in re.finditer(r"querySelector(?:All)?\(['\"]([^'\"]+)['\"]\)", stripped):
             selector = m.group(1)
             for cls in re.findall(r"\.([a-zA-Z_][\w-]*)", selector):
-                symbols.append(
-                    Symbol(f".{cls}", "css_class", "reference", chunk_id, doc_path, i)
-                )
+                _emit(f".{cls}", "css_class", "reference", i)
             for id_ in re.findall(r"#([a-zA-Z_][\w-]*)", selector):
-                symbols.append(
-                    Symbol(f"#{id_}", "css_id", "reference", chunk_id, doc_path, i)
-                )
+                _emit(f"#{id_}", "css_id", "reference", i)
 
         for m in re.finditer(r"getElementById\(['\"]([^'\"]+)['\"]\)", stripped):
-            symbols.append(
-                Symbol(f"#{m.group(1)}", "css_id", "reference", chunk_id, doc_path, i)
-            )
+            _emit(f"#{m.group(1)}", "css_id", "reference", i)
 
         for m in re.finditer(
             r"getElementsByClassName\(['\"]([^'\"]+)['\"]\)", stripped
         ):
             for cls in m.group(1).split():
-                symbols.append(
-                    Symbol(f".{cls}", "css_class", "reference", chunk_id, doc_path, i)
-                )
+                _emit(f".{cls}", "css_class", "reference", i)
 
         for m in re.finditer(
             r"classList\.(?:add|remove|toggle|contains)\(['\"]([^'\"]+)['\"]\)",
             stripped,
         ):
-            symbols.append(
-                Symbol(
-                    f".{m.group(1)}",
-                    "css_class",
-                    "reference",
-                    chunk_id,
-                    doc_path,
-                    i,
-                )
-            )
+            _emit(f".{m.group(1)}", "css_class", "reference", i)
 
-    # Emit any pending declaration at EOF (e.g. no closing paren/brace reached).
+        # -- Update brace depth for next iteration ----------------------------
+        brace_delta = line.count("{") - line.count("}")
+        brace_depth += brace_delta
+
     if pending_name:
-        symbols.append(
-            Symbol(
-                pending_name,
-                "variable",
-                "definition",
-                chunk_id,
-                doc_path,
-                pending_line,
-            )
-        )
+        _emit(pending_name, "variable", "definition", pending_line, _container())
 
     return symbols
 

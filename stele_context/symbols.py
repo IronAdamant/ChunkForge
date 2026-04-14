@@ -323,10 +323,7 @@ class SymbolExtractor:
         except SyntaxError:
             return extract_python_regex(content, doc_path, chunk_id)
 
-        symbols: list[Symbol] = []
-
-        # Collect node IDs of ast.Name/ast.Attribute that are ast.Call.func
-        # so the ast.Name pass can skip them (already captured with kind="function").
+        # Pre-collect ast.Name/ast.Attribute ids used as Call.func
         _call_func_node_ids: set[int] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(
@@ -334,90 +331,95 @@ class SymbolExtractor:
             ):
                 _call_func_node_ids.add(id(node.func))
 
-        for node in ast.walk(tree):
-            line = getattr(node, "lineno", None)
+        class _Visitor(ast.NodeVisitor):
+            def __init__(self) -> None:
+                self.symbols: list[Symbol] = []
+                self.scope_stack: list[str] = []
 
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                symbols.append(
+            def _container(self) -> str | None:
+                return ".".join(self.scope_stack) if self.scope_stack else None
+
+            def _add(self, name: str, kind: str, role: str, line: int | None) -> None:
+                self.symbols.append(
                     Symbol(
-                        node.name, "function", "definition", chunk_id, doc_path, line
+                        name=name,
+                        kind=kind,
+                        role=role,
+                        chunk_id=chunk_id,
+                        document_path=doc_path,
+                        line_number=line,
+                        container=self._container(),
                     )
                 )
-            elif isinstance(node, ast.ClassDef):
-                symbols.append(
-                    Symbol(node.name, "class", "definition", chunk_id, doc_path, line)
+
+            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+                self._add(
+                    node.name, "function", "definition", getattr(node, "lineno", None)
                 )
-            elif isinstance(node, ast.Import):
+                self.scope_stack.append(node.name)
+                self.generic_visit(node)
+                self.scope_stack.pop()
+
+            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+                self._add(
+                    node.name, "function", "definition", getattr(node, "lineno", None)
+                )
+                self.scope_stack.append(node.name)
+                self.generic_visit(node)
+                self.scope_stack.pop()
+
+            def visit_ClassDef(self, node: ast.ClassDef) -> None:
+                self._add(
+                    node.name, "class", "definition", getattr(node, "lineno", None)
+                )
+                self.scope_stack.append(node.name)
+                self.generic_visit(node)
+                self.scope_stack.pop()
+
+            def visit_Import(self, node: ast.Import) -> None:
                 for alias in node.names:
-                    symbols.append(
-                        Symbol(
-                            alias.name, "module", "reference", chunk_id, doc_path, line
-                        )
+                    self._add(
+                        alias.name, "module", "reference", getattr(node, "lineno", None)
                     )
-            elif isinstance(node, ast.ImportFrom):
+
+            def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
                 if node.module:
-                    symbols.append(
-                        Symbol(
-                            node.module, "module", "reference", chunk_id, doc_path, line
-                        )
+                    self._add(
+                        node.module,
+                        "module",
+                        "reference",
+                        getattr(node, "lineno", None),
                     )
                 for alias in node.names or []:
                     if alias.name != "*":
-                        symbols.append(
-                            Symbol(
-                                alias.name,
-                                "import",
-                                "reference",
-                                chunk_id,
-                                doc_path,
-                                line,
-                            )
+                        self._add(
+                            alias.name,
+                            "import",
+                            "reference",
+                            getattr(node, "lineno", None),
                         )
-            elif isinstance(node, ast.Call):
+
+            def visit_Call(self, node: ast.Call) -> None:
+                line = getattr(node, "lineno", None)
                 if isinstance(node.func, ast.Name):
-                    symbols.append(
-                        Symbol(
-                            node.func.id,
-                            "function",
-                            "reference",
-                            chunk_id,
-                            doc_path,
-                            line,
-                        )
-                    )
+                    self._add(node.func.id, "function", "reference", line)
                 elif isinstance(node.func, ast.Attribute):
-                    symbols.append(
-                        Symbol(
-                            node.func.attr,
-                            "function",
-                            "reference",
-                            chunk_id,
-                            doc_path,
-                            line,
-                        )
-                    )
-            elif isinstance(node, ast.Name):
-                # Capture name references beyond direct calls: function-as-value
-                # (keyword args, assignments, returns, collection elements).
-                # Skip names already captured as ast.Call.func (kind="function"),
-                # Store-context names (assignment targets), and the discard name.
+                    self._add(node.func.attr, "function", "reference", line)
+                self.generic_visit(node)
+
+            def visit_Name(self, node: ast.Name) -> None:
+                line = getattr(node, "lineno", None)
                 if (
                     id(node) not in _call_func_node_ids
                     and isinstance(node.ctx, ast.Load)
                     and node.id != "_"
                 ):
-                    symbols.append(
-                        Symbol(
-                            node.id,
-                            "name",
-                            "reference",
-                            chunk_id,
-                            doc_path,
-                            line,
-                        )
-                    )
+                    self._add(node.id, "name", "reference", line)
+                self.generic_visit(node)
 
-        return symbols
+        visitor = _Visitor()
+        visitor.visit(tree)
+        return visitor.symbols
 
 
 # -- Resolution --------------------------------------------------------------
@@ -495,12 +497,12 @@ def resolve_symbols(symbols: list[Symbol]) -> list[tuple[str, str, str, str]]:
     the resolution prefers a ``Baz`` definition in a file matching ``foo/bar.py``
     over an unrelated ``Baz`` in another file.
     """
-    # Build definition index: name -> [(chunk_id, document_path)]
-    definitions: dict[str, list[tuple[str, str]]] = {}
+    # Build definition index: name -> [(chunk_id, document_path, container)]
+    definitions: dict[str, list[tuple[str, str, str | None]]] = {}
     for sym in symbols:
         if sym.role == "definition":
             definitions.setdefault(sym.name, []).append(
-                (sym.chunk_id, sym.document_path)
+                (sym.chunk_id, sym.document_path, sym.container)
             )
 
     # Build module hints for path-aware resolution
@@ -534,24 +536,31 @@ def resolve_symbols(symbols: list[Symbol]) -> list[tuple[str, str, str, str]]:
         if not defs and sym.kind == "module":
             for dp, first_cid in doc_chunks.items():
                 if _module_matches_path(sym.name, dp):
-                    defs = [(first_cid, dp)]
+                    defs = [(first_cid, dp, None)]
                     break
 
         if not defs:
             continue
 
+        # Container-aware filtering: prefer definitions whose container
+        # matches the reference's container (e.g. method calls inside a class).
+        if len(defs) > 1 and sym.container:
+            container_matches = [d for d in defs if d[2] == sym.container]
+            if container_matches:
+                defs = container_matches
+
         # Filter: prefer definitions from modules imported in this chunk
         hints = module_hints.get(sym.chunk_id, set())
         if hints and len(defs) > 1:
             hinted = [
-                (cid, dp)
-                for cid, dp in defs
+                (cid, dp, cont)
+                for cid, dp, cont in defs
                 if any(_module_matches_path(mod, dp) for mod in hints)
             ]
             if hinted:
                 defs = hinted
 
-        for def_chunk_id, def_doc_path in defs:
+        for def_chunk_id, def_doc_path, _ in defs:
             # Skip self-references within the same chunk
             if def_chunk_id == sym.chunk_id:
                 continue

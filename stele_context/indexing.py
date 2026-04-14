@@ -405,10 +405,9 @@ def index_documents_unlocked(
         for doc_info in results["indexed"]:
             for c in storage.get_document_chunks(doc_info["path"]):
                 affected.add(c["chunk_id"])
-        # Full edge rebuild: incremental (affected_chunk_ids=...) is incorrect
-        # when unchanged files have edges to newly indexed files — those edges
-        # would be dropped.  Full rebuild is O(30K symbols) and <1 s.
-        symbol_manager.rebuild_edges(affected_chunk_ids=None)
+        # Incremental edge rebuild: only edges involving affected chunks or
+        # symbol names that changed in those chunks are updated.
+        symbol_manager.rebuild_edges(affected_chunk_ids=affected)
         # Propagate staleness so dependent chunks are flagged.
         if affected:
             symbol_manager.propagate_staleness(affected)

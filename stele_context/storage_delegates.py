@@ -91,6 +91,12 @@ class StorageDelegatesMixin:
     def clear_chunk_edges(self, chunk_ids: list[str]) -> None:
         self._symbol_storage.clear_chunk_edges(chunk_ids)
 
+    def get_edge_symbol_names_for_chunks(self, chunk_ids: list[str]) -> set[str]:
+        return self._symbol_storage.get_edge_symbol_names_for_chunks(chunk_ids)
+
+    def get_symbol_names_for_chunks(self, chunk_ids: list[str]) -> set[str]:
+        return self._symbol_storage.get_symbol_names_for_chunks(chunk_ids)
+
     def clear_chunk_symbols(self, chunk_ids: list[str]) -> None:
         self._symbol_storage.clear_chunk_symbols(chunk_ids)
 

@@ -13,7 +13,91 @@ from pathlib import Path
 from typing import Any
 
 from stele_context.chunkers.base import Chunk
-from stele_context.symbols import SymbolExtractor, Symbol, resolve_symbols, _NOISE_REFS
+from stele_context.symbols import (
+    SymbolExtractor,
+    Symbol,
+    resolve_symbols,
+    _NOISE_REFS,
+    _module_matches_path,
+)
+
+
+def _resolve_test_edges(symbols: list[Symbol]) -> list[tuple[str, str, str, str]]:
+    """Create ``test_of`` edges linking test files to their source files.
+
+    Uses filename convention matching (``test_foo.py`` → ``foo.py``,
+    ``foo_test.py`` → ``foo.py``) and import analysis (test imports that
+    resolve to source modules).
+    """
+    # document_path -> first chunk_id
+    doc_chunk: dict[str, str] = {}
+    for sym in symbols:
+        if sym.document_path not in doc_chunk:
+            doc_chunk[sym.document_path] = sym.chunk_id
+
+    # Classify documents
+    test_docs: list[str] = []
+    source_docs: list[str] = []
+    for dp in doc_chunk:
+        p = Path(dp)
+        is_test = (
+            p.name.startswith("test_")
+            or p.stem.endswith("_test")
+            or "tests" in p.parts
+            or "test" in p.parts
+        )
+        if is_test:
+            test_docs.append(dp)
+        else:
+            source_docs.append(dp)
+
+    # stem -> source docs
+    source_by_stem: dict[str, list[str]] = {}
+    for dp in source_docs:
+        source_by_stem.setdefault(Path(dp).stem, []).append(dp)
+
+    edges: list[tuple[str, str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for test_dp in test_docs:
+        test_cid = doc_chunk[test_dp]
+        p = Path(test_dp)
+        candidates: set[str] = set()
+
+        # Convention: test_X.py -> X.py
+        if p.name.startswith("test_"):
+            base = p.name[5:].rsplit(".", 1)[0]
+            candidates.update(source_by_stem.get(base, []))
+
+        # Convention: X_test.py -> X.py
+        if p.stem.endswith("_test"):
+            base = p.stem[:-5]
+            candidates.update(source_by_stem.get(base, []))
+
+        # Same-stem fallback for tests in tests/ directories
+        if "tests" in p.parts or "test" in p.parts:
+            candidates.update(source_by_stem.get(p.stem, []))
+
+        # Import analysis
+        for sym in symbols:
+            if (
+                sym.document_path == test_dp
+                and sym.role == "reference"
+                and sym.kind in ("module", "import")
+            ):
+                for src_dp in source_docs:
+                    if _module_matches_path(sym.name, src_dp):
+                        candidates.add(src_dp)
+
+        for src_dp in candidates:
+            src_cid = doc_chunk[src_dp]
+            key = (test_cid, src_cid)
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append((test_cid, src_cid, "test_of", "test"))
+
+    return edges
 
 
 class SymbolGraphManager:
@@ -125,8 +209,9 @@ class SymbolGraphManager:
         """Rebuild symbol edges from current symbols.
 
         If affected_chunk_ids is given, only edges involving those chunks
-        are cleared and re-created (incremental).  Otherwise, all edges
-        are rebuilt from scratch.
+        (or symbol names that changed in those chunks) are cleared and
+        re-created (incremental). Otherwise, all edges are rebuilt from
+        scratch.
         """
         all_syms_raw = self.storage.get_all_symbols()
         if not all_syms_raw:
@@ -136,16 +221,23 @@ class SymbolGraphManager:
 
         all_syms = self._dicts_to_symbols(all_syms_raw)
         all_edges = resolve_symbols(all_syms)
+        all_edges.extend(_resolve_test_edges(all_syms))
 
         if affected_chunk_ids is None:
             self.storage.clear_all_edges()
             self.storage.store_edges(all_edges)
         else:
-            self.storage.clear_chunk_edges(list(affected_chunk_ids))
+            affected_list = list(affected_chunk_ids)
+            old_names = self.storage.get_edge_symbol_names_for_chunks(affected_list)
+            current_names = self.storage.get_symbol_names_for_chunks(affected_list)
+            affected_names = old_names | current_names
+            self.storage.clear_chunk_edges(affected_list)
             scoped = [
                 e
                 for e in all_edges
-                if e[0] in affected_chunk_ids or e[1] in affected_chunk_ids
+                if e[0] in affected_chunk_ids
+                or e[1] in affected_chunk_ids
+                or e[3] in affected_names
             ]
             self.storage.store_edges(scoped)
 
